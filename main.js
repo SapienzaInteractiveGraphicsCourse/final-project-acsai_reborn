@@ -188,10 +188,12 @@ playerBody.addEventListener('collide', (e) => {
 });
 
 // ==========================================
-// 6. PROCEDURAL CHUNKS & GAPS
+// 6. PROCEDURAL CHUNKS, GAPS & GATES
 // ==========================================
 const trackTiles = []; const obstacles = []; const puddles = []; const windmills = []; const debrisList = [];
+const gates = []; 
 let nextSpawnZ = -40; 
+let nextGateZ = -1000; 
 let wasGap = false;
 
 const puddleShape = new THREE.Shape();
@@ -201,6 +203,73 @@ puddleShape.bezierCurveTo(2.4, -2.5, 1.5, -4.8, 0.2, -6);
 puddleShape.bezierCurveTo(-1.8, -5.5, -2.2, -2.0, -1.7, 0);
 puddleShape.bezierCurveTo(-1.2, 2.5, -2.5, 4.5, 0, 6);
 const puddleGeo = new THREE.ShapeGeometry(puddleShape, 32);
+
+function spawnGate(zPos) {
+    const gateGroup = new THREE.Group();
+    gateGroup.position.set(0, 0, zPos);
+
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 }); // Dark Wood
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 }); // Gold
+
+    // Pillars & Beam
+    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), frameMat);
+    leftPillar.position.set(-7, 5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
+    
+    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), frameMat);
+    rightPillar.position.set(7, 5, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
+
+    const topBeam = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 2), frameMat);
+    topBeam.position.set(0, 11, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
+
+    // Physics bounds for the pillars so the player can't cheat around them
+    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 5, 1)), position: new CANNON.Vec3(-7, 5, zPos) });
+    world.addBody(leftPillarBody);
+    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 5, 1)), position: new CANNON.Vec3(7, 5, zPos) });
+    world.addBody(rightPillarBody);
+
+    // Left Door Setup (Pivoting from the left edge)
+    const leftDoorPivot = new THREE.Group();
+    leftDoorPivot.position.set(-6, 0, 0); 
+    
+    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 10, 0.5), doorMat);
+    leftDoor.position.set(3, 5, 0); 
+    leftDoor.castShadow = true;
+    
+    const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
+    leftHandle.position.set(2.5, 5, 0.5); 
+    leftDoor.add(leftHandle);
+    
+    leftDoorPivot.add(leftDoor);
+    gateGroup.add(leftDoorPivot);
+
+    // Right Door Setup (Pivoting from the right edge)
+    const rightDoorPivot = new THREE.Group();
+    rightDoorPivot.position.set(6, 0, 0); 
+
+    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 10, 0.5), doorMat);
+    rightDoor.position.set(-3, 5, 0); 
+    rightDoor.castShadow = true;
+
+    const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
+    rightHandle.position.set(-2.5, 5, 0.5); 
+    rightDoor.add(rightHandle);
+
+    rightDoorPivot.add(rightDoor);
+    gateGroup.add(rightDoorPivot);
+
+    scene.add(gateGroup);
+    
+    gates.push({
+        group: gateGroup,
+        leftPivot: leftDoorPivot,
+        rightPivot: rightDoorPivot,
+        zPos: zPos,
+        opened: false,
+        leftPillarBody: leftPillarBody,
+        rightPillarBody: rightPillarBody
+    });
+}
 
 function spawnWindmill(zPos) {
     const windmillGroup = new THREE.Group();
@@ -231,15 +300,26 @@ function spawnStartingRunway() {
 
 function spawnNextChunk() {
     const gapChance = Math.min(0.25, 0.15 + (distanceTraveled / 10000));
-    if (nextSpawnZ < -150 && Math.random() < gapChance && !wasGap && Math.abs(nextSpawnZ) % 300 !== 0) {
+    
+    // Check gap spawning, ensuring a gap doesn't spawn exactly over a gate chunk
+    if (nextSpawnZ < -150 && Math.random() < gapChance && !wasGap && Math.abs(nextSpawnZ) % 300 !== 0 && nextSpawnZ > nextGateZ) {
         wasGap = true; nextSpawnZ -= 30; return; 
     }
     wasGap = false;
 
+    // Spawn the ground tile
     const tMesh = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 30), groundMat);
     tMesh.position.set(0, -1, nextSpawnZ); tMesh.receiveShadow = true; scene.add(tMesh);
     const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, nextSpawnZ) });
     world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
+
+    // Spawn Stage Gate every 1000m
+    if (nextSpawnZ <= nextGateZ) {
+        spawnGate(nextSpawnZ);
+        nextGateZ -= 1000;
+        nextSpawnZ -= 30;
+        return; // Don't spawn obstacles/puddles directly inside the gate
+    }
 
     if (Math.abs(nextSpawnZ) % 300 === 0) { spawnWindmill(nextSpawnZ); nextSpawnZ -= 30; return; }
 
@@ -284,9 +364,11 @@ function resetGame() {
     puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
     windmills.forEach(w => { scene.remove(w.group); world.removeBody(w.body); }); windmills.length = 0;
     debrisList.forEach(d => { scene.remove(d.mesh); world.removeBody(d.body); }); debrisList.length = 0;
+    
+    gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
 
     spawnStartingRunway();
-    currentLane = 0; nextSpawnZ = -165; 
+    currentLane = 0; nextSpawnZ = -165; nextGateZ = -1000;
     survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false;
     
     currentForm = 'stone'; playerMesh.material = materials.stone; playerMesh.scale.set(1,1,1);
@@ -363,7 +445,7 @@ function animate() {
         scoreHud.innerHTML = `Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span>${speedText}<br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>`;
     }
 
-// ------------------------------------------
+    // ------------------------------------------
     // DAY / NIGHT CYCLE 
     // ------------------------------------------
     const theta = elapsedTime * cycleSpeed; 
@@ -476,6 +558,32 @@ function animate() {
             let t = trackTiles[i];
             if (t.body.position.z > playerMesh.position.z + 150) { 
                 scene.remove(t.mesh); world.removeBody(t.body); trackTiles.splice(i, 1); 
+            }
+        }
+
+        // --- GATE ANIMATION & CLEANUP ---
+        for (let i = gates.length - 1; i >= 0; i--) {
+            let g = gates[i];
+            let distToGate = playerBody.position.z - g.zPos; 
+
+            // Trigger door opening when player is 80 meters away
+            if (distToGate < 80 && distToGate > -20) {
+                g.opened = true;
+            }
+
+            // Smooth opening animation
+            if (g.opened) {
+                // Left door swings inwards to -90 degrees
+                g.leftPivot.rotation.y = THREE.MathUtils.lerp(g.leftPivot.rotation.y, -Math.PI / 2, 3 * delta);
+                // Right door swings inwards to 90 degrees
+                g.rightPivot.rotation.y = THREE.MathUtils.lerp(g.rightPivot.rotation.y, Math.PI / 2, 3 * delta);
+            }
+
+            if (g.zPos > playerMesh.position.z + 150) {
+                scene.remove(g.group);
+                world.removeBody(g.leftPillarBody);
+                world.removeBody(g.rightPillarBody);
+                gates.splice(i, 1);
             }
         }
 
