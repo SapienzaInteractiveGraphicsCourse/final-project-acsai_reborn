@@ -82,7 +82,7 @@ for (let i = 0; i < 150; i++) {
 scene.add(cloudsGroup);
 
 // ==========================================
-// 3. TEXTURES & GAME STATE
+// 3. TEXTURES, UI & GAME STATE
 // ==========================================
 let gameState = 'MENU'; 
 let currentForm = 'stone'; 
@@ -92,6 +92,7 @@ let survivalTime = 0;
 let pinsSmashed = 0;
 let distanceTraveled = 0;
 let gameOverTimer = 0;
+let gatesPassed = 0; // Tracks the number of doors passed
 
 const uiHUD = document.getElementById('ui');
 const mainMenu = document.getElementById('main-menu');
@@ -99,6 +100,7 @@ const playBtn = document.getElementById('play-btn');
 const latestScoreText = document.getElementById('latest-score');
 const UI_Status = document.getElementById('status');
 
+// HUD for scores
 const scoreHud = document.createElement('div');
 scoreHud.style.position = 'absolute'; scoreHud.style.top = '10px'; scoreHud.style.right = '10px';
 scoreHud.style.color = '#fff'; scoreHud.style.background = 'rgba(0,0,0,0.7)';
@@ -106,6 +108,46 @@ scoreHud.style.padding = '15px'; scoreHud.style.borderRadius = '8px';
 scoreHud.style.fontFamily = 'sans-serif'; scoreHud.style.fontSize = '18px';
 scoreHud.style.fontWeight = 'bold'; scoreHud.style.textAlign = 'right'; scoreHud.style.display = 'none';
 document.body.appendChild(scoreHud);
+
+// --- STAGE ANIMATION UI ---
+const stageText = document.createElement('div');
+stageText.style.position = 'absolute';
+stageText.style.top = '25%';
+stageText.style.left = '50%';
+stageText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+stageText.style.color = '#ffcc00';
+stageText.style.fontSize = '90px';
+stageText.style.fontWeight = '900';
+stageText.style.fontFamily = '"Arial Black", Arial, sans-serif';
+stageText.style.textShadow = '0px 0px 20px rgba(255, 204, 0, 0.8), 4px 4px 10px rgba(0,0,0,0.8)';
+stageText.style.pointerEvents = 'none';
+stageText.style.opacity = '0';
+stageText.style.zIndex = '1000';
+stageText.style.textAlign = 'center';
+document.body.appendChild(stageText);
+
+function showStageText(num) {
+    stageText.innerText = `STAGE ${num}`;
+    
+    // Reset state instantly
+    stageText.style.transition = 'none';
+    stageText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+    stageText.style.opacity = '1';
+    
+    // Force browser reflow to restart animation smoothly
+    void stageText.offsetWidth;
+    
+    // Pop in smoothly (scale up)
+    stageText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
+    stageText.style.transform = 'translate(-50%, -50%) scale(1)';
+    
+    // Fade out and scale slightly larger after a brief delay
+    setTimeout(() => {
+        stageText.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
+        stageText.style.transform = 'translate(-50%, -50%) scale(1.5)';
+        stageText.style.opacity = '0';
+    }, 1200);
+}
 
 const textureLoader = new THREE.TextureLoader();
 
@@ -236,8 +278,9 @@ function spawnGate(zPos) {
     leftDoor.position.set(3, 5, 0); 
     leftDoor.castShadow = true;
     
+    // Position 0 on the Y-axis places it in the exact vertical middle of the door
     const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
-    leftHandle.position.set(2.5, 5, 0.5); 
+    leftHandle.position.set(2.5, 0, 0.5); 
     leftDoor.add(leftHandle);
     
     leftDoorPivot.add(leftDoor);
@@ -251,8 +294,9 @@ function spawnGate(zPos) {
     rightDoor.position.set(-3, 5, 0); 
     rightDoor.castShadow = true;
 
+    // Position 0 on the Y-axis places it in the exact vertical middle of the door
     const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
-    rightHandle.position.set(-2.5, 5, 0.5); 
+    rightHandle.position.set(-2.5, 0, 0.5); 
     rightDoor.add(rightHandle);
 
     rightDoorPivot.add(rightDoor);
@@ -266,6 +310,7 @@ function spawnGate(zPos) {
         rightPivot: rightDoorPivot,
         zPos: zPos,
         opened: false,
+        passed: false, // Track if the player has passed this gate for the Stage popup
         leftPillarBody: leftPillarBody,
         rightPillarBody: rightPillarBody
     });
@@ -369,7 +414,7 @@ function resetGame() {
 
     spawnStartingRunway();
     currentLane = 0; nextSpawnZ = -165; nextGateZ = -1000;
-    survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false;
+    survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false; gatesPassed = 0;
     
     currentForm = 'stone'; playerMesh.material = materials.stone; playerMesh.scale.set(1,1,1);
     baseSpeed = -15; forwardSpeed = -15;
@@ -569,6 +614,13 @@ function animate() {
             // Trigger door opening when player is 80 meters away
             if (distToGate < 80 && distToGate > -20) {
                 g.opened = true;
+            }
+
+            // --- NEW: Trigger STAGE X Text when passed ---
+            if (!g.passed && distToGate < 0) { 
+                g.passed = true;
+                gatesPassed++;
+                showStageText(gatesPassed);
             }
 
             // Smooth opening animation
