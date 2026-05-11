@@ -75,13 +75,7 @@ for (let i = 0; i < 150; i++) {
         cloudCluster.add(puff);
     }
     
-    let yPos;
-    if (i < 30) {
-        yPos = 70 + Math.random() * 40; 
-    } else {
-        yPos = -80 + Math.random() * 70; 
-    }
-    
+    let yPos = i < 30 ? 70 + Math.random() * 40 : -80 + Math.random() * 70; 
     cloudCluster.position.set((Math.random() - 0.5) * 800, yPos, (Math.random() - 0.5) * 800);
     cloudsGroup.add(cloudCluster);
 }
@@ -130,11 +124,6 @@ const startingFloorTexture = textureLoader.load('textures/floor.jpg');
 startingFloorTexture.colorSpace = THREE.SRGBColorSpace;
 startingFloorTexture.wrapS = THREE.RepeatWrapping; startingFloorTexture.wrapT = THREE.RepeatWrapping;
 startingFloorTexture.repeat.set(2, 33); 
-
-const puddleTexture = textureLoader.load('textures/paddel.jpg');
-puddleTexture.colorSpace = THREE.SRGBColorSpace;
-puddleTexture.wrapS = THREE.RepeatWrapping; puddleTexture.wrapT = THREE.RepeatWrapping;
-puddleTexture.repeat.set(1, 1); 
 
 const materials = {
     stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.9, metalness: 0.1 }),
@@ -270,8 +259,8 @@ function spawnNextChunk() {
 
         const puddleMirror = new Reflector(puddleGeo, {
             clipBias: 0.003,
-            textureWidth: 128, 
-            textureHeight: 128,
+            textureWidth: 512, 
+            textureHeight: 512,
             color: 0x88bbff
         });
         puddleMirror.rotation.x = -Math.PI / 2;
@@ -380,11 +369,15 @@ function animate() {
     const theta = elapsedTime * cycleSpeed; const skyRadius = 150;
     const skyCenterZ = gameState === 'MENU' ? 0 : playerMesh.position.z;
 
-    sunMesh.position.set(Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
-    moonMesh.position.set(Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
+    // LEFT TO RIGHT TRAJECTORY: -Math.cos starts on Left (-x), peaks center (0), sets Right (+x)
+    sunMesh.position.set(-Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
+    moonMesh.position.set(-Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
     starsPoints.position.z = skyCenterZ;
+
+    // Hide celestial bodies when they dip below the track horizon so they aren't seen underneath
+    sunMesh.visible = sunMesh.position.y > -15;
+    moonMesh.visible = moonMesh.position.y > -15;
     
-    // Position clouds near the player, but rotate them slowly to simulate drifting wind
     cloudsGroup.position.z = skyCenterZ;
     cloudsGroup.rotation.y += 0.05 * delta;
 
