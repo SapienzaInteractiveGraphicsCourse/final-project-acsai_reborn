@@ -60,6 +60,33 @@ const starsMat = new THREE.PointsMaterial({ size: 1.5, color: 0xffffff, transpar
 const starsPoints = new THREE.Points(starsGeo, starsMat);
 scene.add(starsPoints);
 
+// --- CLOUDS SETUP ---
+const cloudsGroup = new THREE.Group();
+const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, flatShading: true, fog: true });
+const cloudGeo = new THREE.SphereGeometry(1, 8, 8); 
+
+for (let i = 0; i < 150; i++) {
+    const cloudCluster = new THREE.Group();
+    const puffs = 3 + Math.floor(Math.random() * 4); 
+    for(let j = 0; j < puffs; j++) {
+        const puff = new THREE.Mesh(cloudGeo, cloudMat);
+        puff.position.set((Math.random() - 0.5) * 15, (Math.random() - 0.5) * 5, (Math.random() - 0.5) * 15);
+        puff.scale.set(6 + Math.random() * 8, 4 + Math.random() * 4, 6 + Math.random() * 8);
+        cloudCluster.add(puff);
+    }
+    
+    let yPos;
+    if (i < 30) {
+        yPos = 70 + Math.random() * 40; 
+    } else {
+        yPos = -80 + Math.random() * 70; 
+    }
+    
+    cloudCluster.position.set((Math.random() - 0.5) * 800, yPos, (Math.random() - 0.5) * 800);
+    cloudsGroup.add(cloudCluster);
+}
+scene.add(cloudsGroup);
+
 // ==========================================
 // 3. TEXTURES & GAME STATE
 // ==========================================
@@ -114,11 +141,15 @@ const materials = {
     beachBall: new THREE.MeshStandardMaterial({ color: 0xffffff, map: beachBallTexture, roughness: 0.1 })
 };
 
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.1, metalness: 0.4 });
-const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: startingFloorTexture, roughness: 0.1, metalness: 0.4 });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
+const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: startingFloorTexture, roughness: 0.9, metalness: 0.05 });
 
 const puddleSurfaceMat = new THREE.MeshStandardMaterial({ 
-    color: 0x88bbff, map: puddleTexture, transparent: true, opacity: 0.7, roughness: 0.3, metalness: 0.2
+    color: 0x1ca3ec, 
+    transparent: true, 
+    opacity: 0.8,    
+    roughness: 0.3,  
+    metalness: 0.2
 });
 
 const physicsMaterials = { ground: new CANNON.Material('ground'), ball: new CANNON.Material('ball'), obstacle: new CANNON.Material('obstacle') };
@@ -352,6 +383,10 @@ function animate() {
     sunMesh.position.set(Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
     moonMesh.position.set(Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
     starsPoints.position.z = skyCenterZ;
+    
+    // Position clouds near the player, but rotate them slowly to simulate drifting wind
+    cloudsGroup.position.z = skyCenterZ;
+    cloudsGroup.rotation.y += 0.05 * delta;
 
     const isDay = Math.sin(theta) > 0;
     if (isDay) {
@@ -363,6 +398,8 @@ function animate() {
 
         scene.background.lerpColors(nightColor, dayColor, i); scene.fog.color.copy(scene.background); starsMat.opacity = 0; 
         
+        cloudMat.opacity = i * 0.9;
+        
         groundMat.emissive.setHex(0x000000); startingGroundMat.emissive.setHex(0x000000);
         pinMat.emissive.setHex(0x000000); puddleSurfaceMat.emissive.setHex(0x000000);
         materials.stone.emissive.setHex(0x000000); materials.beachBall.emissive.setHex(0x000000);
@@ -370,7 +407,8 @@ function animate() {
         dirLight.intensity = 0; ambientLight.intensity = 0.5; 
         scene.background.copy(nightColor); scene.fog.color.copy(nightColor); starsMat.opacity = 1; 
         
-        // KEEP FLOOR NATURAL AT NIGHT (DO NOT ADD EMISSIVE GLOW)
+        cloudMat.opacity = 0;
+        
         groundMat.emissive.setHex(0x000000); startingGroundMat.emissive.setHex(0x000000);
         pinMat.emissive.setHex(0x555555); puddleSurfaceMat.emissive.setHex(0x001144); 
         materials.stone.emissive.setHex(0x222222); materials.beachBall.emissive.setHex(0x222222); 
