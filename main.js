@@ -369,14 +369,10 @@ function animate() {
     const theta = elapsedTime * cycleSpeed; const skyRadius = 150;
     const skyCenterZ = gameState === 'MENU' ? 0 : playerMesh.position.z;
 
-    // LEFT TO RIGHT TRAJECTORY: -Math.cos starts on Left (-x), peaks center (0), sets Right (+x)
-    sunMesh.position.set(-Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
-    moonMesh.position.set(-Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
+    // RIGHT TO LEFT TRAJECTORY: Positive Math.cos starts on right, goes to center, ends on left
+    sunMesh.position.set(Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
+    moonMesh.position.set(Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
     starsPoints.position.z = skyCenterZ;
-
-    // Hide celestial bodies when they dip below the track horizon so they aren't seen underneath
-    sunMesh.visible = sunMesh.position.y > -15;
-    moonMesh.visible = moonMesh.position.y > -15;
     
     cloudsGroup.position.z = skyCenterZ;
     cloudsGroup.rotation.y += 0.05 * delta;
