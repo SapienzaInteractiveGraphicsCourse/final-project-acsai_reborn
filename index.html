@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sky Bowling 3D</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #000; }
+        canvas { display: block; }
+        
+        #ui {
+            position: absolute; top: 10px; left: 10px;
+            color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px;
+            display: none; 
+        }
+        #ui h3 { margin-top: 0; color: #ffeb3b; }
+
+        #main-menu {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(6px);
+            z-index: 100; color: white; text-align: center;
+        }
+        
+        #main-menu h1 {
+            font-size: 6rem; margin: 0 0 10px 0; color: #ffeb3b;
+            text-shadow: 0px 4px 15px rgba(0,0,0,0.8);
+            letter-spacing: 2px;
+        }
+        
+        #latest-score {
+            font-size: 1.5rem; margin-bottom: 40px; color: #fff;
+            text-shadow: 1px 1px 5px rgba(0,0,0,1);
+            /* background: rgba(0,0,0,0.6); padding: 15px; border-radius: 10px; */
+        }
+        
+        #play-btn {
+            padding: 15px 60px; font-size: 2rem; cursor: pointer;
+            background: #00e676; border: none; border-radius: 50px;
+            color: #111; font-weight: 900; letter-spacing: 1px;
+            box-shadow: 0 6px 20px rgba(0, 230, 118, 0.4);
+            transition: all 0.2s ease;
+        }
+        
+        #play-btn:hover {
+            transform: scale(1.05); background: #00c853;
+            box-shadow: 0 8px 25px rgba(0, 230, 118, 0.6);
+        }
+        #play-btn:active { transform: scale(0.95); }
+    </style>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="main-menu">
+        <h1>Sky Bowling</h1>
+        <div id="latest-score">Are you ready to roll?</div>
+        <button id="play-btn">PLAY</button>
+    </div>
+
+    <div id="ui">
+        <h3>Sky Bowling</h3>
+        <p><b>Controls:</b> A / D (or Arrows) to switch lanes & turn off the edge! | SPACE to jump</p>
+        <p><b>Forms:</b><br>[2] Cycle Form (Stone &rarr; Beach Ball)</p>
+        <p id="status" style="font-weight:bold; color:#00e676;">Current Form: Normal</p>
+    </div>
+    
+    <script type="module" src="./main.js"></script>
+</body>
+</html>
