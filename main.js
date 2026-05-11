@@ -92,7 +92,7 @@ let survivalTime = 0;
 let pinsSmashed = 0;
 let distanceTraveled = 0;
 let gameOverTimer = 0;
-let gatesPassed = 0; // Tracks the number of doors passed
+let gatesPassed = 0; 
 
 const uiHUD = document.getElementById('ui');
 const mainMenu = document.getElementById('main-menu');
@@ -250,9 +250,10 @@ function spawnGate(zPos) {
     const gateGroup = new THREE.Group();
     gateGroup.position.set(0, 0, zPos);
 
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0x6b4226, roughness: 0.9 }); // Dark Wood
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 }); // Gold
+    // CHANGED: Colorful vibrant materials for the gate
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x00ccff, roughness: 0.5 }); // Bright sky blue
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
 
     // Pillars & Beam
     const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), frameMat);
@@ -278,7 +279,6 @@ function spawnGate(zPos) {
     leftDoor.position.set(3, 5, 0); 
     leftDoor.castShadow = true;
     
-    // Position 0 on the Y-axis places it in the exact vertical middle of the door
     const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
     leftHandle.position.set(2.5, 0, 0.5); 
     leftDoor.add(leftHandle);
@@ -294,7 +294,6 @@ function spawnGate(zPos) {
     rightDoor.position.set(-3, 5, 0); 
     rightDoor.castShadow = true;
 
-    // Position 0 on the Y-axis places it in the exact vertical middle of the door
     const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
     rightHandle.position.set(-2.5, 0, 0.5); 
     rightDoor.add(rightHandle);
@@ -310,7 +309,7 @@ function spawnGate(zPos) {
         rightPivot: rightDoorPivot,
         zPos: zPos,
         opened: false,
-        passed: false, // Track if the player has passed this gate for the Stage popup
+        passed: false,
         leftPillarBody: leftPillarBody,
         rightPillarBody: rightPillarBody
     });
@@ -497,12 +496,9 @@ function animate() {
     const skyRadius = 150;
     const skyCenterZ = gameState === 'MENU' ? 0 : playerMesh.position.z;
 
-    // Restore your original RIGHT TO LEFT TRAJECTORY
     sunMesh.position.set(Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
     moonMesh.position.set(Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
     
-    // Enable transparency and fade out near the horizon
-    // Math.sin acts as the height. Multiplied by 5 so they stay solid in the sky, fading only at the very edges.
     sunMesh.material.transparent = true;
     moonMesh.material.transparent = true;
     sunMesh.material.opacity = Math.max(0, Math.min(1, Math.sin(theta) * 5));
@@ -513,31 +509,23 @@ function animate() {
     cloudsGroup.position.z = skyCenterZ;
     cloudsGroup.rotation.y += 0.05 * delta;
 
-    const isDay = Math.sin(theta) > 0;
-    if (isDay) {
-        const i = Math.max(0, Math.sin(theta)); 
-        dirLight.intensity = i * 1.5; ambientLight.intensity = i * 0.6 + 0.2;
-        const tgt = gameState === 'MENU' ? menuScene.position : playerMesh.position;
-        dirLight.position.copy(tgt).add(new THREE.Vector3().copy(sunMesh.position).sub(tgt).normalize().multiplyScalar(60)); 
-        dirLight.target = gameState === 'MENU' ? giantBall : playerMesh;
+    // CHANGED: Create a smooth transition factor (0 at night, 1 during day) instead of a harsh if/else
+    const dayFactor = Math.max(0, Math.min(1, Math.sin(theta) * 2 + 0.5));
 
-        scene.background.lerpColors(nightColor, dayColor, i); scene.fog.color.copy(scene.background); starsMat.opacity = 0; 
-        
-        cloudMat.opacity = i * 0.9;
-        
-        groundMat.emissive.setHex(0x000000); startingGroundMat.emissive.setHex(0x000000);
-        pinMat.emissive.setHex(0x000000); puddleSurfaceMat.emissive.setHex(0x000000);
-        materials.stone.emissive.setHex(0x000000); materials.beachBall.emissive.setHex(0x000000);
-    } else {
-        dirLight.intensity = 0; ambientLight.intensity = 0.5; 
-        scene.background.copy(nightColor); scene.fog.color.copy(nightColor); starsMat.opacity = 1; 
-        
-        cloudMat.opacity = 0;
-        
-        groundMat.emissive.setHex(0x000000); startingGroundMat.emissive.setHex(0x000000);
-        pinMat.emissive.setHex(0x555555); puddleSurfaceMat.emissive.setHex(0x001144); 
-        materials.stone.emissive.setHex(0x222222); materials.beachBall.emissive.setHex(0x222222); 
-    }
+    // Smooth lighting transitions
+    dirLight.intensity = Math.max(0, Math.sin(theta)) * 1.5; 
+    ambientLight.intensity = 0.4 + dayFactor * 0.4; 
+
+    const tgt = gameState === 'MENU' ? menuScene.position : playerMesh.position;
+    dirLight.position.copy(tgt).add(new THREE.Vector3().copy(sunMesh.position).sub(tgt).normalize().multiplyScalar(60)); 
+    dirLight.target = gameState === 'MENU' ? giantBall : playerMesh;
+
+    // Smooth background and fog transition
+    scene.background.copy(nightColor).lerp(dayColor, dayFactor); 
+    scene.fog.color.copy(scene.background); 
+    
+    starsMat.opacity = 1.0 - dayFactor; 
+    cloudMat.opacity = dayFactor * 0.9;
 
     // ------------------------------------------
     // STATE MACHINE
@@ -616,8 +604,8 @@ function animate() {
                 g.opened = true;
             }
 
-            // --- NEW: Trigger STAGE X Text when passed ---
-            if (!g.passed && distToGate < 0) { 
+            // CHANGED: Trigger STAGE X Text only if NOT game over!
+            if (!g.passed && distToGate < 0 && gameState !== 'GAMEOVER') { 
                 g.passed = true;
                 gatesPassed++;
                 showStageText(gatesPassed);
