@@ -363,15 +363,24 @@ function animate() {
         scoreHud.innerHTML = `Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span>${speedText}<br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>`;
     }
 
-    // ------------------------------------------
+// ------------------------------------------
     // DAY / NIGHT CYCLE 
     // ------------------------------------------
-    const theta = elapsedTime * cycleSpeed; const skyRadius = 150;
+    const theta = elapsedTime * cycleSpeed; 
+    const skyRadius = 150;
     const skyCenterZ = gameState === 'MENU' ? 0 : playerMesh.position.z;
 
-    // RIGHT TO LEFT TRAJECTORY: Positive Math.cos starts on right, goes to center, ends on left
+    // Restore your original RIGHT TO LEFT TRAJECTORY
     sunMesh.position.set(Math.cos(theta) * skyRadius, Math.sin(theta) * skyRadius, skyCenterZ - 200); 
     moonMesh.position.set(Math.cos(theta + Math.PI) * skyRadius, Math.sin(theta + Math.PI) * skyRadius, skyCenterZ - 200);
+    
+    // Enable transparency and fade out near the horizon
+    // Math.sin acts as the height. Multiplied by 5 so they stay solid in the sky, fading only at the very edges.
+    sunMesh.material.transparent = true;
+    moonMesh.material.transparent = true;
+    sunMesh.material.opacity = Math.max(0, Math.min(1, Math.sin(theta) * 5));
+    moonMesh.material.opacity = Math.max(0, Math.min(1, Math.sin(theta + Math.PI) * 5));
+
     starsPoints.position.z = skyCenterZ;
     
     cloudsGroup.position.z = skyCenterZ;
