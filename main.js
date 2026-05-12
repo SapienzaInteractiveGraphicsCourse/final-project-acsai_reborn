@@ -93,6 +93,7 @@ let pinsSmashed = 0;
 let distanceTraveled = 0;
 let gameOverTimer = 0;
 let gatesPassed = 0; 
+let gameElapsedTime = 0; // Tracks game time independent of pause
 
 const uiHUD = document.getElementById('ui');
 const mainMenu = document.getElementById('main-menu');
@@ -108,6 +109,170 @@ scoreHud.style.padding = '15px'; scoreHud.style.borderRadius = '8px';
 scoreHud.style.fontFamily = 'sans-serif'; scoreHud.style.fontSize = '18px';
 scoreHud.style.fontWeight = 'bold'; scoreHud.style.textAlign = 'right'; scoreHud.style.display = 'none';
 document.body.appendChild(scoreHud);
+
+// --- PAUSE BUTTON ---
+const pauseBtn = document.createElement('button');
+pauseBtn.innerText = "PAUSE (9)";
+pauseBtn.style.position = 'absolute';
+pauseBtn.style.top = '110px'; 
+pauseBtn.style.right = '10px';
+pauseBtn.style.padding = '10px 15px';
+pauseBtn.style.background = 'rgba(0,0,0,0.7)';
+pauseBtn.style.color = '#fff';
+pauseBtn.style.border = '2px solid #fff';
+pauseBtn.style.borderRadius = '8px';
+pauseBtn.style.fontFamily = 'sans-serif';
+pauseBtn.style.fontSize = '14px';
+pauseBtn.style.fontWeight = 'bold';
+pauseBtn.style.cursor = 'pointer';
+pauseBtn.style.display = 'none';
+document.body.appendChild(pauseBtn);
+
+let isPaused = false;
+function togglePause() {
+    if (gameState !== 'PLAYING') return;
+    isPaused = !isPaused;
+    pauseBtn.innerText = isPaused ? "RESUME (9)" : "PAUSE (9)";
+}
+pauseBtn.addEventListener('click', togglePause);
+
+// --- HOW TO PLAY BUTTON & MODAL ---
+const howToPlayBtn = document.createElement('button');
+howToPlayBtn.innerText = "HOW TO PLAY";
+
+// Apply exact Play button styling, but slightly smaller padding and font size
+howToPlayBtn.style.padding = "10px 25px";
+howToPlayBtn.style.fontSize = "1.2rem";
+howToPlayBtn.style.cursor = "pointer";
+howToPlayBtn.style.background = "#00e676";
+howToPlayBtn.style.border = "none";
+howToPlayBtn.style.borderRadius = "50px";
+howToPlayBtn.style.color = "#111";
+howToPlayBtn.style.fontWeight = "900";
+howToPlayBtn.style.letterSpacing = "1px";
+howToPlayBtn.style.boxShadow = "0 6px 20px rgba(0, 230, 118, 0.4)";
+howToPlayBtn.style.transition = "all 0.2s ease";
+howToPlayBtn.style.display = "block";
+howToPlayBtn.style.margin = "15px auto 0 auto";
+
+// Simulate the CSS hover/active states for the How To Play Button
+howToPlayBtn.addEventListener('mouseenter', () => {
+    howToPlayBtn.style.transform = 'scale(1.05)';
+    howToPlayBtn.style.background = '#00c853';
+    howToPlayBtn.style.boxShadow = '0 8px 25px rgba(0, 230, 118, 0.6)';
+});
+howToPlayBtn.addEventListener('mouseleave', () => {
+    howToPlayBtn.style.transform = 'scale(1)';
+    howToPlayBtn.style.background = '#00e676';
+    howToPlayBtn.style.boxShadow = '0 6px 20px rgba(0, 230, 118, 0.4)';
+});
+howToPlayBtn.addEventListener('mousedown', () => {
+    howToPlayBtn.style.transform = 'scale(0.95)';
+});
+howToPlayBtn.addEventListener('mouseup', () => {
+    howToPlayBtn.style.transform = 'scale(1.05)';
+});
+
+if (playBtn && playBtn.parentNode) {
+    playBtn.parentNode.insertBefore(howToPlayBtn, playBtn.nextSibling);
+} else {
+    mainMenu.appendChild(howToPlayBtn);
+}
+
+const rulesModal = document.createElement('div');
+rulesModal.style.position = 'absolute';
+rulesModal.style.top = '50%';
+rulesModal.style.left = '50%';
+rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+rulesModal.style.width = '400px';
+rulesModal.style.background = 'rgba(0, 0, 0, 0.9)';
+rulesModal.style.border = '3px solid #00ccff';
+rulesModal.style.borderRadius = '15px';
+rulesModal.style.padding = '30px';
+rulesModal.style.color = '#fff';
+rulesModal.style.fontFamily = 'sans-serif';
+rulesModal.style.textAlign = 'center';
+rulesModal.style.zIndex = '3000';
+// Smooth ease-in-out transition instead of jumpy cubic-bezier
+rulesModal.style.transition = 'transform 0.3s ease-in-out';
+rulesModal.innerHTML = `
+    <h2 style="color:#00ccff; margin-top:0;">HOW TO PLAY</h2>
+    <p style="font-size:16px; line-height:1.6; text-align:left;">
+        <b>[A] / [D] or [Left] / [Right]:</b> Change lanes<br><br>
+        <b>[W] / [Space] or [Up]:</b> Jump<br><br>
+        <b>[2]:</b> Swap Stone (Heavy) & Beach Ball (Floaty)<br><br>
+        <b>[9] or [Mouse Click]:</b> Pause / Resume Game<br><br>
+        <em>You can smash pins with the Stone ball, but avoid water with it or you'll sink! On the other hand the Beach ball is floaty on water and it's also very useful to jump for long distances, but don't hit the pins because it's not strong enough!</em><br><br>
+        <b> The objective is to survive for the longest amount of time possible and hit as many pins as you can! Good luck and have fun playing!</b>
+    </p>
+`;
+document.body.appendChild(rulesModal);
+
+const closeRulesBtn = document.createElement('button');
+closeRulesBtn.innerText = "CLOSE";
+closeRulesBtn.style.marginTop = "20px";
+closeRulesBtn.style.padding = "10px 25px";
+closeRulesBtn.style.fontSize = "1.2rem";
+closeRulesBtn.style.fontWeight = "900";
+closeRulesBtn.style.cursor = "pointer";
+closeRulesBtn.style.borderRadius = "50px";
+closeRulesBtn.style.border = "none";
+closeRulesBtn.style.background = "#00ccff";
+closeRulesBtn.style.color = "#111"; 
+closeRulesBtn.style.boxShadow = "0 6px 20px rgba(0, 204, 255, 0.4)";
+closeRulesBtn.style.transition = "all 0.2s ease";
+rulesModal.appendChild(closeRulesBtn);
+
+closeRulesBtn.addEventListener('mouseenter', () => {
+    closeRulesBtn.style.transform = 'scale(1.05)';
+    closeRulesBtn.style.boxShadow = '0 8px 25px rgba(0, 204, 255, 0.6)';
+});
+closeRulesBtn.addEventListener('mouseleave', () => {
+    closeRulesBtn.style.transform = 'scale(1)';
+    closeRulesBtn.style.boxShadow = '0 6px 20px rgba(0, 204, 255, 0.4)';
+});
+closeRulesBtn.addEventListener('mousedown', () => {
+    closeRulesBtn.style.transform = 'scale(0.95)';
+});
+closeRulesBtn.addEventListener('mouseup', () => {
+    closeRulesBtn.style.transform = 'scale(1.05)';
+});
+
+howToPlayBtn.addEventListener('click', () => {
+    rulesModal.style.transform = 'translate(-50%, -50%) scale(1)';
+});
+
+closeRulesBtn.addEventListener('click', () => {
+    // Closes smoothly directly to the center
+    rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+});
+
+// --- CREDITS UI (MENU ONLY) ---
+const creditLeft = document.createElement('div');
+creditLeft.innerHTML = 'Interactive graphics final project';
+creditLeft.style.position = 'absolute';
+creditLeft.style.bottom = '15px';
+creditLeft.style.left = '15px';
+creditLeft.style.color = '#ffeb3b';
+creditLeft.style.fontFamily = '"Arial Black", Arial, sans-serif';
+creditLeft.style.fontSize = '16px';
+creditLeft.style.fontWeight = 'bold';
+creditLeft.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+creditLeft.style.zIndex = '1000';
+document.body.appendChild(creditLeft);
+
+const creditRight = document.createElement('div');
+creditRight.innerHTML = 'Coded by Francesca Cinelli and Abduazizkhon Shomansurov';
+creditRight.style.position = 'absolute';
+creditRight.style.bottom = '15px';
+creditRight.style.right = '15px';
+creditRight.style.color = '#ffeb3b';
+creditRight.style.fontFamily = '"Arial Black", Arial, sans-serif';
+creditRight.style.fontSize = '16px';
+creditRight.style.fontWeight = 'bold';
+creditRight.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
+creditRight.style.zIndex = '1000';
+document.body.appendChild(creditRight);
 
 // --- STAGE ANIMATION UI ---
 const stageText = document.createElement('div');
@@ -128,20 +293,12 @@ document.body.appendChild(stageText);
 
 function showStageText(num) {
     stageText.innerText = `STAGE ${num}`;
-    
-    // Reset state instantly
     stageText.style.transition = 'none';
     stageText.style.transform = 'translate(-50%, -50%) scale(0.1)';
     stageText.style.opacity = '1';
-    
-    // Force browser reflow to restart animation smoothly
     void stageText.offsetWidth;
-    
-    // Pop in smoothly (scale up)
     stageText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
     stageText.style.transform = 'translate(-50%, -50%) scale(1)';
-    
-    // Fade out and scale slightly larger after a brief delay
     setTimeout(() => {
         stageText.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
         stageText.style.transform = 'translate(-50%, -50%) scale(1.5)';
@@ -149,13 +306,41 @@ function showStageText(num) {
     }, 1200);
 }
 
+// --- GAME OVER UI ---
+const gameOverText = document.createElement('div');
+gameOverText.innerText = "GAME OVER";
+gameOverText.style.position = 'absolute';
+gameOverText.style.top = '40%';
+gameOverText.style.left = '50%';
+gameOverText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+gameOverText.style.color = '#ff3333'; // Red
+gameOverText.style.fontSize = '100px';
+gameOverText.style.fontWeight = '900';
+gameOverText.style.fontFamily = '"Arial Black", Arial, sans-serif';
+gameOverText.style.textShadow = '0px 0px 20px rgba(255, 51, 51, 0.8), 4px 4px 10px rgba(0,0,0,0.8)';
+gameOverText.style.pointerEvents = 'none';
+gameOverText.style.opacity = '0';
+gameOverText.style.zIndex = '1000';
+gameOverText.style.textAlign = 'center';
+document.body.appendChild(gameOverText);
+
+function showGameOverText() {
+    gameOverText.style.transition = 'none';
+    gameOverText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+    gameOverText.style.opacity = '1';
+    void gameOverText.offsetWidth;
+    gameOverText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
+    gameOverText.style.transform = 'translate(-50%, -50%) scale(1)';
+}
+
+function hideGameOverText() {
+    gameOverText.style.opacity = '0';
+}
+
 const textureLoader = new THREE.TextureLoader();
 
 const stoneTexture = textureLoader.load('textures/stone_color.png');
 stoneTexture.colorSpace = THREE.SRGBColorSpace; 
-const beachBallTexture = textureLoader.load('textures/beachball_color.jpg');
-beachBallTexture.colorSpace = THREE.SRGBColorSpace;
-beachBallTexture.wrapS = THREE.RepeatWrapping; beachBallTexture.wrapT = THREE.RepeatWrapping;
 
 const floorTexture = textureLoader.load('textures/floor.jpg');
 floorTexture.colorSpace = THREE.SRGBColorSpace;
@@ -169,7 +354,7 @@ startingFloorTexture.repeat.set(2, 33);
 
 const materials = {
     stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.9, metalness: 0.1 }),
-    beachBall: new THREE.MeshStandardMaterial({ color: 0xffffff, map: beachBallTexture, roughness: 0.1 })
+    beachBall: new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.1 })
 };
 
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
@@ -223,8 +408,12 @@ playerBody.addEventListener('collide', (e) => {
     if (e.body.isPin) {
         if (currentForm === 'stone') e.body.needsShatter = true; 
         else {
-            gameState = 'GAMEOVER'; playerBody.velocity.set(0, 10, 15); 
-            UI_Status.innerHTML = "CRASH! Only the Stone ball smashes pins."; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
+            if (gameState !== 'GAMEOVER') {
+                gameState = 'GAMEOVER'; 
+                showGameOverText();
+                playerBody.velocity.set(0, 10, 15); 
+                UI_Status.innerHTML = "CRASH! Only the Stone ball smashes pins."; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
+            }
         }
     }
 });
@@ -250,7 +439,6 @@ function spawnGate(zPos) {
     const gateGroup = new THREE.Group();
     gateGroup.position.set(0, 0, zPos);
 
-    // CHANGED: Colorful vibrant materials for the gate
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x00ccff, roughness: 0.5 }); // Bright sky blue
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
     const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
@@ -402,7 +590,69 @@ function spawnNextChunk() {
     nextSpawnZ -= 30;
 }
 
+let isTransitioning = false;
+function triggerPlayAnimation() {
+    if (isTransitioning) return;
+    isTransitioning = true;
+    
+    // Spawn 20 pins from behind the camera/title blasting towards the screen
+    for(let i = 0; i < 20; i++) {
+        const pMesh = new THREE.Mesh(pinGeo, pinMat); 
+        pMesh.castShadow = true; pMesh.receiveShadow = true; 
+        scene.add(pMesh);
+        
+        const pBody = new CANNON.Body({ mass: 1, material: physicsMaterials.obstacle });
+        const qY = new CANNON.Quaternion(); 
+        qY.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        pBody.addShape(pinShape, new CANNON.Vec3(0, 0, 0), qY);
+        
+        // Position behind the title (deep Z) and scatter across X and Y
+        pBody.position.set((Math.random() - 0.5) * 20, 5 + Math.random() * 10, -30 - Math.random() * 10);
+        
+        // Blast forward towards the camera (Positive Z velocity)
+        pBody.velocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20 + 10, 40 + Math.random() * 30);
+        pBody.angularVelocity.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+        
+        world.addBody(pBody); 
+        debrisList.push({ mesh: pMesh, body: pBody, spawnTime: gameElapsedTime }); 
+    }
+
+    if (playBtn) {
+        // Dramatic "smash" animation: widen, flatten, and fade out
+        playBtn.style.transition = 'all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        playBtn.style.transform = 'scale(1.5, 0.1)';
+        playBtn.style.opacity = '0';
+    }
+    if (howToPlayBtn) {
+        howToPlayBtn.style.transition = 'all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        howToPlayBtn.style.transform = 'scale(1.5, 0.1)';
+        howToPlayBtn.style.opacity = '0';
+    }
+    
+    // Wait for the pins to fly before resetting the game and hiding the menu
+    setTimeout(() => {
+        if (playBtn) {
+            // Restore styling silently for the next time we return to menu
+            playBtn.style.transition = 'none';
+            playBtn.style.transform = 'scale(1)';
+            playBtn.style.opacity = '1';
+        }
+        if (howToPlayBtn) {
+            howToPlayBtn.style.transition = 'transform 0.15s ease-out';
+            howToPlayBtn.style.transform = 'scale(1)';
+            howToPlayBtn.style.opacity = '1';
+        }
+        resetGame();
+        isTransitioning = false;
+    }, 1200);
+}
+
 function resetGame() {
+    hideGameOverText();
+    creditLeft.style.display = 'none';
+    creditRight.style.display = 'none';
+    rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+    
     trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
     obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
     puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
@@ -421,19 +671,48 @@ function resetGame() {
     
     playerBody.position.set(0, 5, 0); playerBody.velocity.set(0,0,0); playerBody.angularVelocity.set(0,0,0);
     
+    isPaused = false;
+    pauseBtn.innerText = "PAUSE (9)";
+    pauseBtn.style.display = 'block';
+    
     UI_Status.innerText = "Current Form: Stone (Heavy)"; UI_Status.style.color = "#aaaaaa"; scoreHud.style.color = "#fff";
     uiHUD.style.display = 'block'; scoreHud.style.display = 'block'; mainMenu.style.display = 'none';
     menuScene.visible = false; playerMesh.visible = true; gameState = 'PLAYING';
 }
 
-playBtn.addEventListener('click', resetGame);
+if (playBtn) {
+    playBtn.addEventListener('click', triggerPlayAnimation);
+}
+
 spawnStartingRunway(); 
 
 // ==========================================
 // 7. USER INTERACTION
 // ==========================================
+
+// Click anywhere on screen to pause, ignoring clicks on UI buttons
+window.addEventListener('mousedown', (e) => {
+    // If the click is on any button, ignore it here
+    if (e.target.tagName.toLowerCase() === 'button') return;
+    
+    if (gameState === 'PLAYING') {
+        togglePause();
+    }
+});
+
 window.addEventListener('keydown', (e) => {
+    if (e.key === '9') {
+        togglePause();
+    }
+    
+    // Allow starting game with Space from main menu, animating the play button
+    if (gameState === 'MENU' && e.key === ' ') {
+        triggerPlayAnimation();
+        return;
+    }
+
     if (gameState !== 'PLAYING') return; 
+    if (isPaused) return; // Prevent input while paused
 
     if (e.key === 'a' || e.key === 'ArrowLeft') currentLane--;
     if (e.key === 'd' || e.key === 'ArrowRight') currentLane++;
@@ -474,8 +753,14 @@ const cycleSpeed = 0.3;
 function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
-    const elapsedTime = clock.getElapsedTime();
     
+    // Stop updating logic if game is paused
+    if (isPaused) {
+        renderer.render(scene, camera);
+        return;
+    }
+    
+    gameElapsedTime += delta;
     world.step(1/60, delta, 3);
 
     if (gameState === 'PLAYING') {
@@ -492,7 +777,7 @@ function animate() {
     // ------------------------------------------
     // DAY / NIGHT CYCLE 
     // ------------------------------------------
-    const theta = elapsedTime * cycleSpeed; 
+    const theta = gameElapsedTime * cycleSpeed; 
     const skyRadius = 150;
     const skyCenterZ = gameState === 'MENU' ? 0 : playerMesh.position.z;
 
@@ -509,18 +794,18 @@ function animate() {
     cloudsGroup.position.z = skyCenterZ;
     cloudsGroup.rotation.y += 0.05 * delta;
 
-    // CHANGED: Create a smooth transition factor (0 at night, 1 during day) instead of a harsh if/else
     const dayFactor = Math.max(0, Math.min(1, Math.sin(theta) * 2 + 0.5));
 
-    // Smooth lighting transitions
+    // FIX FOR CRASH: DirectionalLight.target MUST be an Object3D, not a Vector3
+    const tgtPos = gameState === 'MENU' ? menuScene.position : playerMesh.position;
+    const tgtObj = gameState === 'MENU' ? giantBall : playerMesh;
+
     dirLight.intensity = Math.max(0, Math.sin(theta)) * 1.5; 
+    dirLight.position.copy(tgtPos).add(new THREE.Vector3().copy(sunMesh.position).sub(tgtPos).normalize().multiplyScalar(60)); 
+    dirLight.target = tgtObj;
+
     ambientLight.intensity = 0.4 + dayFactor * 0.4; 
 
-    const tgt = gameState === 'MENU' ? menuScene.position : playerMesh.position;
-    dirLight.position.copy(tgt).add(new THREE.Vector3().copy(sunMesh.position).sub(tgt).normalize().multiplyScalar(60)); 
-    dirLight.target = gameState === 'MENU' ? giantBall : playerMesh;
-
-    // Smooth background and fog transition
     scene.background.copy(nightColor).lerp(dayColor, dayFactor); 
     scene.fog.color.copy(scene.background); 
     
@@ -532,8 +817,20 @@ function animate() {
     // ------------------------------------------
     if (gameState === 'MENU') {
         giantBall.rotation.x += 1.5 * delta; giantBall.rotation.y += 0.5 * delta;
-        giantPin1.rotation.y -= 1 * delta; giantPin2.rotation.y += 1 * delta;
+        // Keep rotating pins if they are visible
+        if (giantPin1.visible) {
+            giantPin1.rotation.y -= 1 * delta; giantPin2.rotation.y += 1 * delta;
+        }
         camera.position.set(0, 5, 5); camera.lookAt(menuScene.position);
+        
+        // Process the physics of the scattering pins even during the MENU state
+        if (isTransitioning) {
+            for (let i = debrisList.length - 1; i >= 0; i--) {
+                let d = debrisList[i]; 
+                d.mesh.position.copy(d.body.position); 
+                d.mesh.quaternion.copy(d.body.quaternion);
+            }
+        }
 
     } else if (gameState === 'PLAYING') {
         playerBody.velocity.z = forwardSpeed;
@@ -550,8 +847,11 @@ function animate() {
         while (nextSpawnZ > playerBody.position.z - 300) spawnNextChunk();
 
         if (playerBody.position.y < -5) {
-            gameState = 'GAMEOVER';
-            UI_Status.innerHTML = "GAME OVER!<br>You fell into the abyss!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
+            if (gameState !== 'GAMEOVER') {
+                gameState = 'GAMEOVER';
+                showGameOverText();
+                UI_Status.innerHTML = "GAME OVER!<br>You fell into the abyss!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
+            }
         }
 
         for (let i = puddles.length - 1; i >= 0; i--) {
@@ -563,8 +863,11 @@ function animate() {
             } 
             else if (Math.abs(playerBody.position.z - p.z) < 6.0 && Math.abs(playerBody.position.x - p.x) < 2.0 && playerBody.position.y < 1.5) {
                 if (currentForm !== 'beachBall') {
-                    gameState = 'GAMEOVER'; isSinking = true;
-                    UI_Status.innerHTML = "GLUB GLUB... You sank!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333"; 
+                    if (gameState !== 'GAMEOVER') {
+                        gameState = 'GAMEOVER'; isSinking = true;
+                        showGameOverText();
+                        UI_Status.innerHTML = "GLUB GLUB... You sank!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333"; 
+                    }
                 }
             }
         }
@@ -577,8 +880,15 @@ function animate() {
             if (playerMesh.scale.x > 0.05) playerMesh.scale.multiplyScalar(0.96); 
         }
 
-        if (gameOverTimer > 2.5) {
+        // Extended Game Over fall sequence back up to 1.5 seconds so you can see the fall
+        if (gameOverTimer > 1.5) {
             latestScoreText.innerHTML = `Latest Score: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
+            
+            pauseBtn.style.display = 'none';
+            creditLeft.style.display = 'block';
+            creditRight.style.display = 'block';
+            hideGameOverText();
+            
             uiHUD.style.display = 'none'; scoreHud.style.display = 'none'; mainMenu.style.display = 'flex';
             menuScene.visible = true; playerMesh.visible = false; gameState = 'MENU';
         }
@@ -604,7 +914,7 @@ function animate() {
                 g.opened = true;
             }
 
-            // CHANGED: Trigger STAGE X Text only if NOT game over!
+            // Trigger STAGE X Text only if NOT game over!
             if (!g.passed && distToGate < 0 && gameState !== 'GAMEOVER') { 
                 g.passed = true;
                 gatesPassed++;
@@ -638,14 +948,14 @@ function animate() {
                     const dBody = new CANNON.Body({ mass: 0.5, shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25)) });
                     dBody.position.copy(obs.body.position); dBody.position.x += (Math.random() - 0.5) * 0.5; dBody.position.y += Math.random();
                     dBody.velocity.set((Math.random() - 0.5) * 20, Math.random() * 15 + 5, playerBody.velocity.z + (Math.random() - 0.5) * 15);
-                    world.addBody(dBody); debrisList.push({ mesh: dMesh, body: dBody, spawnTime: clock.getElapsedTime() });
+                    world.addBody(dBody); debrisList.push({ mesh: dMesh, body: dBody, spawnTime: gameElapsedTime });
                 }
             } else {
                 obs.mesh.position.copy(obs.body.position); obs.mesh.quaternion.copy(obs.body.quaternion);
             }
         }
 
-        const currentTime = clock.getElapsedTime();
+        const currentTime = gameElapsedTime;
         for(let i = debrisList.length - 1; i >= 0; i--) {
             let d = debrisList[i]; d.mesh.position.copy(d.body.position); d.mesh.quaternion.copy(d.body.quaternion);
             if (currentTime - d.spawnTime > 1.5) { scene.remove(d.mesh); world.removeBody(d.body); debrisList.splice(i, 1); }
