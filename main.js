@@ -92,7 +92,8 @@ scene.add(cloudsGroup);
 // 3. TEXTURES, UI & GAME STATE
 // ==========================================
 let gameState = 'MENU'; 
-let currentForm = 'stone'; 
+// CHANGED: Default starting ball
+let currentForm = 'beachBall'; 
 let isSinking = false;
 let sinkTarget = null;
 
@@ -116,7 +117,7 @@ const playBtn = document.getElementById('play-btn');
 const latestScoreText = document.getElementById('latest-score');
 const UI_Status = document.getElementById('status');
 
-// --- CHANGED: CSS FOR FLASHING "NEW!" BADGE ---
+// --- CSS FOR FLASHING "NEW!" BADGE ---
 const flashStyle = document.createElement('style');
 flashStyle.innerHTML = `
     @keyframes flashNewBadge {
@@ -162,7 +163,7 @@ document.body.appendChild(scoreHud);
 const pauseBtn = document.createElement('button');
 pauseBtn.innerText = "PAUSE (9)";
 pauseBtn.style.position = 'absolute';
-pauseBtn.style.top = '140px'; // Shifted down to accommodate the bigger HUD
+pauseBtn.style.top = '150px'; 
 pauseBtn.style.right = '10px';
 pauseBtn.style.padding = '10px 15px';
 pauseBtn.style.background = 'rgba(0,0,0,0.7)';
@@ -350,9 +351,9 @@ texturesModal.innerHTML = `
         <label style="display:block; margin-bottom:5px; font-weight:bold;">Stone Ball Texture:</label>
         <select id="stone-tex-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
             <option value="textures/bricks_color.png">Default (Bricks)</option>
-            <option value="textures/granite_color.jpg">Granite</option>
+            <option value="textures/granite_color.png">Granite</option>
             <option value="textures/marble_color.jpg">Marble</option>
-            <option value="textures/concrete_color.png">Concrete</option>
+            <option value="textures/concrete_color.jpg">Concrete</option>
         </select>
     </div>
     <div style="text-align:left; margin-bottom: 20px;">
@@ -895,15 +896,17 @@ function resetGame() {
     currentLane = 0; nextSpawnZ = -165; nextGateZ = -1000;
     survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false; gatesPassed = 0;
     
-    currentForm = 'stone'; playerMesh.material = materials.stone; playerMesh.scale.set(1,1,1);
+    // CHANGED: Default is Beach ball
+    currentForm = 'beachBall'; playerMesh.material = materials.beachBall; playerMesh.scale.set(1,1,1);
     
     materials.stone.transparent = false;
     materials.stone.opacity = 1.0;
     materials.beachBall.transparent = false;
     materials.beachBall.opacity = 1.0;
     
-    baseSpeed = -22; forwardSpeed = -22;
-    playerBody.mass = 25; playerBody.updateMassProperties(); 
+    // CHANGED: Starting values to match floaty ball
+    baseSpeed = -35; forwardSpeed = -35;
+    playerBody.mass = 1.5; playerBody.updateMassProperties(); 
     
     playerBody.type = CANNON.Body.DYNAMIC;
     playerBody.collisionFilterGroup = 1;
@@ -914,7 +917,8 @@ function resetGame() {
     pauseBtn.innerText = "PAUSE (9)";
     pauseBtn.style.display = 'block';
     
-    UI_Status.innerText = "Current Form: Stone (Heavy)"; UI_Status.style.color = "#aaaaaa"; scoreHud.style.color = "#fff";
+    // CHANGED: Update UI to match the starting beach ball mode
+    UI_Status.innerText = "Current Form: Beach Ball (Floaty)"; UI_Status.style.color = "#33ccff"; scoreHud.style.color = "#fff";
     uiHUD.style.display = 'block'; scoreHud.style.display = 'block'; mainMenu.style.display = 'none';
     menuScene.visible = false; playerMesh.visible = true; gameState = 'PLAYING';
 }
@@ -923,6 +927,7 @@ if (playBtn) {
     playBtn.addEventListener('click', triggerPlayAnimation);
 }
 
+// CHANGED: Delay the first spawn so the scene resets cleanly
 spawnStartingRunway(); 
 
 // ==========================================
@@ -1013,8 +1018,9 @@ function animate() {
             showNewHighScoreText();
         }
         
-        let speedText = speedMultiplier > 1.1 ? ` <span style="color:#ff3333">(x${speedMultiplier.toFixed(1)} SPEED!)</span>` : "";
-        scoreHud.innerHTML = `Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span>${speedText}<br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>`;
+        // CHANGED: Speed text moved under pins
+        let speedText = speedMultiplier > 1.1 ? `<br><span style="color:#808080">x${speedMultiplier.toFixed(1)} SPEED!</span>` : "";
+        scoreHud.innerHTML = `Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
     }
 
     // ------------------------------------------
@@ -1154,6 +1160,16 @@ function animate() {
             creditRight.style.display = 'block';
             hideGameOverText();
             
+            // CHANGED: Wipe the track and regenerate the starting runway so it correctly renders in MENU state.
+            trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
+            obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
+            puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
+            windmills.forEach(w => { scene.remove(w.group); world.removeBody(w.body); }); windmills.length = 0;
+            debrisList.forEach(d => { scene.remove(d.mesh); world.removeBody(d.body); }); debrisList.length = 0;
+            gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
+            
+            spawnStartingRunway();
+
             uiHUD.style.display = 'none'; scoreHud.style.display = 'none'; mainMenu.style.display = 'flex';
             menuScene.visible = true; playerMesh.visible = false; gameState = 'MENU';
         }
