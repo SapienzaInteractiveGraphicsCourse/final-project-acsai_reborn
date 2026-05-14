@@ -92,10 +92,10 @@ scene.add(cloudsGroup);
 // 3. TEXTURES, UI & GAME STATE
 // ==========================================
 let gameState = 'MENU'; 
-// CHANGED: Default starting ball
 let currentForm = 'beachBall'; 
 let isSinking = false;
 let sinkTarget = null;
+let isPaused = false; 
 
 let survivalTime = 0;
 let pinsSmashed = 0;
@@ -111,10 +111,30 @@ let hasReachedNewHighScore = false;
 
 let isModalOpen = false;
 
-const uiHUD = document.getElementById('ui');
 const mainMenu = document.getElementById('main-menu');
 const playBtn = document.getElementById('play-btn');
 const latestScoreText = document.getElementById('latest-score');
+
+let oldUiHUD = document.getElementById('ui');
+if (oldUiHUD) oldUiHUD.remove(); 
+
+const uiHUD = document.createElement('div');
+uiHUD.id = 'ui';
+uiHUD.style.position = 'absolute';
+uiHUD.style.top = '10px';
+uiHUD.style.left = '10px';
+uiHUD.style.color = '#fff';
+uiHUD.style.background = 'rgba(0,0,0,0.7)';
+uiHUD.style.padding = '15px';
+uiHUD.style.borderRadius = '8px';
+uiHUD.style.fontFamily = 'sans-serif';
+uiHUD.style.display = 'none';
+uiHUD.style.zIndex = '500';
+uiHUD.innerHTML = `
+    <h3 style="margin-top: 0; margin-bottom: 10px; color: #ffeb3b;">Sky Bowling</h3>
+    <p id="status" style="font-weight:bold; color:#33ccff; margin: 0;">Current Form: Beach Ball (Floaty)</p>
+`;
+document.body.appendChild(uiHUD);
 const UI_Status = document.getElementById('status');
 
 // --- CSS FOR FLASHING "NEW!" BADGE ---
@@ -153,255 +173,222 @@ if (latestScoreText && latestScoreText.parentNode) {
 // HUD for scores
 const scoreHud = document.createElement('div');
 scoreHud.style.position = 'absolute'; scoreHud.style.top = '10px'; scoreHud.style.right = '10px';
-scoreHud.style.color = '#fff'; scoreHud.style.background = 'rgba(0,0,0,0.7)';
+scoreHud.style.color = '#fff';
+scoreHud.style.background = 'rgba(0,0,0,0.7)';
 scoreHud.style.padding = '15px'; scoreHud.style.borderRadius = '8px';
 scoreHud.style.fontFamily = 'sans-serif'; scoreHud.style.fontSize = '18px';
 scoreHud.style.fontWeight = 'bold'; scoreHud.style.textAlign = 'right'; scoreHud.style.display = 'none';
+scoreHud.style.zIndex = '500';
 document.body.appendChild(scoreHud);
 
-// --- PAUSE BUTTON ---
-const pauseBtn = document.createElement('button');
-pauseBtn.innerText = "PAUSE (9)";
-pauseBtn.style.position = 'absolute';
-pauseBtn.style.top = '150px'; 
-pauseBtn.style.right = '10px';
-pauseBtn.style.padding = '10px 15px';
-pauseBtn.style.background = 'rgba(0,0,0,0.7)';
-pauseBtn.style.color = '#fff';
-pauseBtn.style.border = '2px solid #fff';
-pauseBtn.style.borderRadius = '8px';
-pauseBtn.style.fontFamily = 'sans-serif';
-pauseBtn.style.fontSize = '14px';
-pauseBtn.style.fontWeight = 'bold';
-pauseBtn.style.cursor = 'pointer';
-pauseBtn.style.display = 'none';
-document.body.appendChild(pauseBtn);
+// ==========================================
+// 4. AUDIO SYSTEM (Synthesized)
+// ==========================================
+let audioCtx = null;
+let sfxEnabled = true;
+let musicEnabled = true;
 
-let isPaused = false;
+// Lazy initialize AudioContext on user interaction
+function getAudioCtx() {
+    if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+    }
+    return audioCtx;
+}
+
+// CHANGED: Resume audio context more reliably and cleanly to prevent tab-switching 404s
+const resumeAudio = () => { 
+    getAudioCtx();
+    if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume(); 
+    }
+};
+
+window.addEventListener('mousedown', resumeAudio);
+window.addEventListener('keydown', resumeAudio);
+window.addEventListener('touchstart', resumeAudio);
+window.addEventListener('focus', resumeAudio);
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) resumeAudio();
+});
+
+function playTone(freq, type, duration, vol=0.2) {
+    if(!sfxEnabled) return;
+    const ctx = getAudioCtx();
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t);
+    
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.linearRampToValueAtTime(0.01, t + duration); 
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + duration);
+}
+
+// Background Music Loop
+let bgmNoteIdx = 0;
+const bgmNotes = [
+    261.63, 329.63, 392.00, 523.25, 392.00, 329.63, 261.63, 392.00, // C major
+    220.00, 261.63, 329.63, 440.00, 329.63, 261.63, 220.00, 329.63, // A minor
+    174.61, 220.00, 261.63, 349.23, 261.63, 220.00, 174.61, 261.63, // F major
+    196.00, 246.94, 293.66, 392.00, 293.66, 246.94, 196.00, 293.66  // G major
+];
+setInterval(() => {
+    if (!musicEnabled || isPaused || gameState !== 'PLAYING') return;
+    const ctx = getAudioCtx();
+    
+    // Safety check to prevent queuing notes while suspended in background
+    if (ctx.state === 'suspended') return;
+    
+    const t = ctx.currentTime;
+    const freq = bgmNotes[bgmNoteIdx % bgmNotes.length];
+    
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+    
+    gain.gain.setValueAtTime(0.08, t); 
+    gain.gain.linearRampToValueAtTime(0.01, t + 0.3);
+    
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.3);
+    
+    bgmNoteIdx++;
+}, 300);
+
+// --- PAUSE OVERLAY ---
+const pauseOverlay = document.createElement('div');
+pauseOverlay.id = 'pause-overlay';
+pauseOverlay.style.cssText = "position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; flex-direction:column; justify-content:center; align-items:center; z-index:2000; font-family:sans-serif;";
+pauseOverlay.innerHTML = `
+    <div style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.7); padding:15px; border-radius:8px; color:white; text-align:left;">
+        <h3 style="margin-top: 0; color: #ffeb3b;">Sky Bowling</h3>
+        <p id="pause-status" style="font-weight:bold; color:#33ccff; margin-bottom: 10px;">Current Form: Beach Ball (Floaty)</p>
+        <hr style="border-color: #555; margin: 10px 0;">
+        <h3 style="margin-top:0; color:#ffeb3b; font-size:1.2rem;">Commands</h3>
+        <p style="margin:5px 0;"><b>[A]/[D]</b> or <b>Arrows</b>: Move</p>
+        <p style="margin:5px 0;"><b>[W]/[Space]</b>: Jump</p>
+        <p style="margin:5px 0;"><b>[2]</b>: Swap Ball</p>
+        <p style="margin:5px 0;"><b>[9]</b> or <b>Click</b>: Pause</p>
+    </div>
+    <div id="pause-stats" style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); padding:15px; border-radius:8px; color:white; text-align:right; font-size:18px; font-weight:bold;">
+        </div>
+    <h1 style="color:#ffcc00; font-size:5rem; margin-bottom:40px; font-family:'Arial Black', sans-serif; text-shadow:0px 0px 20px rgba(255,204,0,0.8);">GAME PAUSED</h1>
+    <div style="display:flex; gap:20px; margin-bottom:30px;">
+        <button id="resume-btn" style="padding:15px 40px; font-size:1.5rem; cursor:pointer; background:#00e676; border:none; border-radius:50px; color:#111; font-weight:900; box-shadow:0 6px 20px rgba(0,230,118,0.4); transition:all 0.2s ease;">RESUME GAME</button>
+        <button id="abandon-btn" style="padding:15px 40px; font-size:1.5rem; cursor:pointer; background:#ff3333; border:none; border-radius:50px; color:#111; font-weight:900; box-shadow:0 6px 20px rgba(255,51,51,0.4); transition:all 0.2s ease;">ABANDON GAME</button>
+    </div>
+    <div style="display:flex; gap:15px;">
+        <button id="pmusic-btn" style="padding:10px 20px; font-size:1rem; cursor:pointer; background:#00ccff; border:none; border-radius:30px; color:#111; font-weight:bold; box-shadow:0 4px 15px rgba(0,204,255,0.4); transition:all 0.2s ease;">MUSIC: ON</button>
+        <button id="psfx-btn" style="padding:10px 20px; font-size:1rem; cursor:pointer; background:#00ccff; border:none; border-radius:30px; color:#111; font-weight:bold; box-shadow:0 4px 15px rgba(0,204,255,0.4); transition:all 0.2s ease;">SFX: ON</button>
+    </div>
+`;
+document.body.appendChild(pauseOverlay);
+
+const resumeBtn = document.getElementById('resume-btn');
+const abandonBtn = document.getElementById('abandon-btn');
+const pMusicBtn = document.getElementById('pmusic-btn');
+const pSfxBtn = document.getElementById('psfx-btn');
+
+function addHover(btn) {
+    btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.05)');
+    btn.addEventListener('mouseleave', () => btn.style.transform = 'scale(1)');
+    btn.addEventListener('mousedown', () => btn.style.transform = 'scale(0.95)');
+    btn.addEventListener('mouseup', () => btn.style.transform = 'scale(1.05)');
+}
+addHover(resumeBtn); addHover(abandonBtn); addHover(pMusicBtn); addHover(pSfxBtn);
+
+resumeBtn.addEventListener('click', togglePause);
+abandonBtn.addEventListener('click', () => {
+    togglePause();
+    gameState = 'GAMEOVER';
+    gameOverTimer = 999; // force immediate return to menu
+});
+
+function updatePauseStats() {
+    const pStats = document.getElementById('pause-stats');
+    pStats.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}</span><br>` + scoreHud.innerHTML;
+}
+
 function togglePause() {
     if (gameState !== 'PLAYING') return;
     isPaused = !isPaused;
-    pauseBtn.innerText = isPaused ? "RESUME (9)" : "PAUSE (9)";
+    if (isPaused) {
+        uiHUD.style.display = 'none';
+        scoreHud.style.display = 'none';
+        pauseOverlay.style.display = 'flex';
+        updatePauseStats();
+        
+        // Sync pause left panel with actual status
+        const pStatus = document.getElementById('pause-status');
+        pStatus.innerText = UI_Status.innerText;
+        pStatus.style.color = UI_Status.style.color;
+    } else {
+        uiHUD.style.display = 'block';
+        scoreHud.style.display = 'block';
+        pauseOverlay.style.display = 'none';
+    }
 }
-pauseBtn.addEventListener('click', togglePause);
 
-// --- HOW TO PLAY BUTTON & MODAL ---
+// --- MAIN MENU BUTTONS (3 ROWS LAYOUT) ---
 const howToPlayBtn = document.createElement('button');
 howToPlayBtn.innerText = "HOW TO PLAY";
-
-howToPlayBtn.style.padding = "10px 25px";
-howToPlayBtn.style.fontSize = "1.2rem";
-howToPlayBtn.style.cursor = "pointer";
-howToPlayBtn.style.background = "#00e676";
-howToPlayBtn.style.border = "none";
-howToPlayBtn.style.borderRadius = "50px";
-howToPlayBtn.style.color = "#111";
-howToPlayBtn.style.fontWeight = "900";
-howToPlayBtn.style.letterSpacing = "1px";
-howToPlayBtn.style.boxShadow = "0 6px 20px rgba(0, 230, 118, 0.4)";
-howToPlayBtn.style.transition = "all 0.2s ease";
-howToPlayBtn.style.display = "block";
-howToPlayBtn.style.margin = "15px auto 0 auto";
-
-howToPlayBtn.addEventListener('mouseenter', () => {
-    howToPlayBtn.style.transform = 'scale(1.05)';
-    howToPlayBtn.style.background = '#00c853';
-    howToPlayBtn.style.boxShadow = '0 8px 25px rgba(0, 230, 118, 0.6)';
-});
-howToPlayBtn.addEventListener('mouseleave', () => {
-    howToPlayBtn.style.transform = 'scale(1)';
-    howToPlayBtn.style.background = '#00e676';
-    howToPlayBtn.style.boxShadow = '0 6px 20px rgba(0, 230, 118, 0.4)';
-});
-howToPlayBtn.addEventListener('mousedown', () => {
-    howToPlayBtn.style.transform = 'scale(0.95)';
-});
-howToPlayBtn.addEventListener('mouseup', () => {
-    howToPlayBtn.style.transform = 'scale(1.05)';
-});
-
-if (playBtn && playBtn.parentNode) {
-    playBtn.parentNode.insertBefore(howToPlayBtn, playBtn.nextSibling);
-} else {
-    mainMenu.appendChild(howToPlayBtn);
-}
-
-const rulesModal = document.createElement('div');
-rulesModal.style.position = 'absolute';
-rulesModal.style.top = '50%';
-rulesModal.style.left = '50%';
-rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
-rulesModal.style.width = '400px';
-rulesModal.style.background = 'rgba(0, 0, 0, 0.9)';
-rulesModal.style.border = '3px solid #00ccff';
-rulesModal.style.borderRadius = '15px';
-rulesModal.style.padding = '30px';
-rulesModal.style.color = '#fff';
-rulesModal.style.fontFamily = 'sans-serif';
-rulesModal.style.textAlign = 'center';
-rulesModal.style.zIndex = '3000';
-rulesModal.style.transition = 'transform 0.3s ease-in-out';
-rulesModal.innerHTML = `
-    <h2 style="color:#00ccff; margin-top:0;">HOW TO PLAY</h2>
-    <p style="font-size:16px; line-height:1.6; text-align:left;">
-        <b>[A] / [D] or [Left] / [Right]:</b> Change lanes<br><br>
-        <b>[W] / [Space] or [Up]:</b> Jump<br><br>
-        <b>[2]:</b> Swap Stone (Heavy) & Beach Ball (Floaty)<br><br>
-        <b>[9] or [Mouse Click]:</b> Pause / Resume Game<br><br>
-        <em>You can smash pins with the Stone ball, but avoid water with it or you'll sink! On the other hand the Beach ball is floaty on water and it's also very useful to jump for long distances, but don't hit the pins because it's not strong enough!</em><br><br>
-        <b> The objective is to survive for the longest amount of time possible and hit as many pins as you can! Good luck and have fun playing!</b>
-    </p>
-`;
-document.body.appendChild(rulesModal);
-
-const closeRulesBtn = document.createElement('button');
-closeRulesBtn.innerText = "CLOSE";
-closeRulesBtn.style.marginTop = "20px";
-closeRulesBtn.style.padding = "10px 25px";
-closeRulesBtn.style.fontSize = "1.2rem";
-closeRulesBtn.style.fontWeight = "900";
-closeRulesBtn.style.cursor = "pointer";
-closeRulesBtn.style.borderRadius = "50px";
-closeRulesBtn.style.border = "none";
-closeRulesBtn.style.background = "#00ccff";
-closeRulesBtn.style.color = "#111"; 
-closeRulesBtn.style.boxShadow = "0 6px 20px rgba(0, 204, 255, 0.4)";
-closeRulesBtn.style.transition = "all 0.2s ease";
-rulesModal.appendChild(closeRulesBtn);
-
-closeRulesBtn.addEventListener('mouseenter', () => {
-    closeRulesBtn.style.transform = 'scale(1.05)';
-    closeRulesBtn.style.boxShadow = '0 8px 25px rgba(0, 204, 255, 0.6)';
-});
-closeRulesBtn.addEventListener('mouseleave', () => {
-    closeRulesBtn.style.transform = 'scale(1)';
-    closeRulesBtn.style.boxShadow = '0 6px 20px rgba(0, 204, 255, 0.4)';
-});
-closeRulesBtn.addEventListener('mousedown', () => {
-    closeRulesBtn.style.transform = 'scale(0.95)';
-});
-closeRulesBtn.addEventListener('mouseup', () => {
-    closeRulesBtn.style.transform = 'scale(1.05)';
-});
-
-howToPlayBtn.addEventListener('click', () => {
-    isModalOpen = true;
-    rulesModal.style.transform = 'translate(-50%, -50%) scale(1)';
-});
-
-closeRulesBtn.addEventListener('click', () => {
-    isModalOpen = false;
-    rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
-});
-
-// --- TEXTURES BUTTON & MODAL ---
 const texturesBtn = document.createElement('button');
 texturesBtn.innerText = "TEXTURES";
-texturesBtn.style.padding = "10px 25px";
-texturesBtn.style.fontSize = "1.2rem";
-texturesBtn.style.cursor = "pointer";
-texturesBtn.style.background = "#00e676";
-texturesBtn.style.border = "none";
-texturesBtn.style.borderRadius = "50px";
-texturesBtn.style.color = "#111";
-texturesBtn.style.fontWeight = "900";
-texturesBtn.style.letterSpacing = "1px";
-texturesBtn.style.boxShadow = "0 6px 20px rgba(0, 230, 118, 0.4)";
-texturesBtn.style.transition = "all 0.2s ease";
-texturesBtn.style.display = "block";
-texturesBtn.style.margin = "15px auto 0 auto";
+const settingsBtn = document.createElement('button');
+settingsBtn.innerText = "SETTINGS";
 
-texturesBtn.addEventListener('mouseenter', () => {
-    texturesBtn.style.transform = 'scale(1.05)';
-    texturesBtn.style.background = '#00c853';
-    texturesBtn.style.boxShadow = '0 8px 25px rgba(0, 230, 118, 0.6)';
-});
-texturesBtn.addEventListener('mouseleave', () => {
-    texturesBtn.style.transform = 'scale(1)';
-    texturesBtn.style.background = '#00e676';
-    texturesBtn.style.boxShadow = '0 6px 20px rgba(0, 230, 118, 0.4)';
-});
-texturesBtn.addEventListener('mousedown', () => {
-    texturesBtn.style.transform = 'scale(0.95)';
-});
-texturesBtn.addEventListener('mouseup', () => {
-    texturesBtn.style.transform = 'scale(1.05)';
-});
-
-howToPlayBtn.parentNode.insertBefore(texturesBtn, howToPlayBtn.nextSibling);
-
-const texturesModal = document.createElement('div');
-texturesModal.style.position = 'absolute';
-texturesModal.style.top = '50%';
-texturesModal.style.left = '50%';
-texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
-texturesModal.style.width = '400px';
-texturesModal.style.background = 'rgba(0, 0, 0, 0.9)';
-texturesModal.style.border = '3px solid #00ccff';
-texturesModal.style.borderRadius = '15px';
-texturesModal.style.padding = '30px';
-texturesModal.style.color = '#fff';
-texturesModal.style.fontFamily = 'sans-serif';
-texturesModal.style.textAlign = 'center';
-texturesModal.style.zIndex = '3000';
-texturesModal.style.transition = 'transform 0.3s ease-in-out';
-texturesModal.innerHTML = `
-    <h2 style="color:#00ccff; margin-top:0;">CHOOSE TEXTURES</h2>
-    <div style="text-align:left; margin-bottom: 20px;">
-        <label style="display:block; margin-bottom:5px; font-weight:bold;">Stone Ball Texture:</label>
-        <select id="stone-tex-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
-            <option value="textures/bricks_color.png">Default (Bricks)</option>
-            <option value="textures/granite_color.png">Granite</option>
-            <option value="textures/marble_color.jpg">Marble</option>
-            <option value="textures/concrete_color.jpg">Concrete</option>
-        </select>
-    </div>
-    <div style="text-align:left; margin-bottom: 20px;">
-        <label style="display:block; margin-bottom:5px; font-weight:bold;">Beach Ball Color:</label>
-        <select id="beach-col-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
-            <option value="0xaa0000">Default (Red)</option>
-            <option value="0x0000aa">Blue</option>
-            <option value="0x00aa00">Green</option>
-            <option value="0xaa00aa">Purple</option>
-        </select>
-    </div>
-`;
-document.body.appendChild(texturesModal);
-
-const saveTexturesBtn = document.createElement('button');
-saveTexturesBtn.innerText = "SAVE";
-saveTexturesBtn.style.marginTop = "20px";
-saveTexturesBtn.style.padding = "10px 25px";
-saveTexturesBtn.style.fontSize = "1.2rem";
-saveTexturesBtn.style.fontWeight = "900";
-saveTexturesBtn.style.cursor = "pointer";
-saveTexturesBtn.style.borderRadius = "50px";
-saveTexturesBtn.style.border = "none";
-saveTexturesBtn.style.background = "#00ccff";
-saveTexturesBtn.style.color = "#111"; 
-saveTexturesBtn.style.boxShadow = "0 6px 20px rgba(0, 204, 255, 0.4)";
-saveTexturesBtn.style.transition = "all 0.2s ease";
-texturesModal.appendChild(saveTexturesBtn);
-
-saveTexturesBtn.addEventListener('mouseenter', () => {
-    saveTexturesBtn.style.transform = 'scale(1.05)';
-    saveTexturesBtn.style.boxShadow = '0 8px 25px rgba(0, 204, 255, 0.6)';
-});
-saveTexturesBtn.addEventListener('mouseleave', () => {
-    saveTexturesBtn.style.transform = 'scale(1)';
-    saveTexturesBtn.style.boxShadow = '0 6px 20px rgba(0, 204, 255, 0.4)';
-});
-saveTexturesBtn.addEventListener('mousedown', () => {
-    saveTexturesBtn.style.transform = 'scale(0.95)';
-});
-saveTexturesBtn.addEventListener('mouseup', () => {
-    saveTexturesBtn.style.transform = 'scale(1.05)';
+[howToPlayBtn, texturesBtn, settingsBtn].forEach(btn => {
+    btn.style.padding = "10px 25px";
+    btn.style.fontSize = "1.2rem";
+    btn.style.cursor = "pointer";
+    btn.style.background = "#00e676";
+    btn.style.border = "none";
+    btn.style.borderRadius = "50px";
+    btn.style.color = "#111";
+    btn.style.fontWeight = "900";
+    btn.style.letterSpacing = "1px";
+    btn.style.boxShadow = "0 6px 20px rgba(0, 230, 118, 0.4)";
+    btn.style.transition = "all 0.2s ease";
+    btn.style.display = "block";
+    btn.style.margin = "15px auto 0 auto";
+    
+    btn.addEventListener('mouseenter', () => {
+        btn.style.transform = 'scale(1.05)';
+        btn.style.background = '#00c853';
+        btn.style.boxShadow = '0 8px 25px rgba(0, 230, 118, 0.6)';
+    });
+    btn.addEventListener('mouseleave', () => {
+        btn.style.transform = 'scale(1)';
+        btn.style.background = '#00e676';
+        btn.style.boxShadow = '0 6px 20px rgba(0, 230, 118, 0.4)';
+    });
+    btn.addEventListener('mousedown', () => btn.style.transform = 'scale(0.95)');
+    btn.addEventListener('mouseup', () => btn.style.transform = 'scale(1.05)');
 });
 
-texturesBtn.addEventListener('click', () => {
-    isModalOpen = true;
-    texturesModal.style.transform = 'translate(-50%, -50%) scale(1)';
-});
+// Configure horizontal container for Textures & Settings
+texturesBtn.style.margin = "0";
+settingsBtn.style.margin = "0";
+
+const row3Container = document.createElement('div');
+row3Container.style.display = 'flex';
+row3Container.style.justifyContent = 'center';
+row3Container.style.gap = '20px';
+row3Container.style.marginTop = '15px';
+row3Container.appendChild(texturesBtn);
+row3Container.appendChild(settingsBtn);
 
 const startHintText = document.createElement('div');
 startHintText.innerText = "Press the play button, space bar or enter key to start the game";
@@ -414,9 +401,137 @@ startHintText.style.opacity = "0.8";
 
 if (playBtn && playBtn.parentNode) {
     playBtn.parentNode.insertBefore(startHintText, playBtn);
+    playBtn.parentNode.insertBefore(howToPlayBtn, playBtn.nextSibling);
+    howToPlayBtn.parentNode.insertBefore(row3Container, howToPlayBtn.nextSibling);
 } else {
     mainMenu.appendChild(startHintText);
+    mainMenu.appendChild(howToPlayBtn);
+    mainMenu.appendChild(row3Container);
 }
+
+
+function createModal(id, titleHtml, innerHtml) {
+    const mod = document.createElement('div');
+    mod.id = id;
+    mod.style.position = 'absolute';
+    mod.style.top = '50%';
+    mod.style.left = '50%';
+    mod.style.transform = 'translate(-50%, -50%) scale(0)';
+    mod.style.width = '400px';
+    mod.style.background = 'rgba(0, 0, 0, 0.9)';
+    mod.style.border = '3px solid #00ccff';
+    mod.style.borderRadius = '15px';
+    mod.style.padding = '30px';
+    mod.style.color = '#fff';
+    mod.style.fontFamily = 'sans-serif';
+    mod.style.textAlign = 'center';
+    mod.style.zIndex = '3000';
+    mod.style.transition = 'transform 0.3s ease-in-out';
+    
+    mod.innerHTML = `<h2 style="color:#00ccff; margin-top:0;">${titleHtml}</h2>${innerHtml}`;
+    
+    const cBtn = document.createElement('button');
+    cBtn.innerText = "CLOSE";
+    cBtn.style.marginTop = "20px";
+    cBtn.style.padding = "10px 25px";
+    cBtn.style.fontSize = "1.2rem";
+    cBtn.style.fontWeight = "900";
+    cBtn.style.cursor = "pointer";
+    cBtn.style.borderRadius = "50px";
+    cBtn.style.border = "none";
+    cBtn.style.background = "#00ccff";
+    cBtn.style.color = "#111"; 
+    cBtn.style.boxShadow = "0 6px 20px rgba(0, 204, 255, 0.4)";
+    cBtn.style.transition = "all 0.2s ease";
+    mod.appendChild(cBtn);
+
+    cBtn.addEventListener('mouseenter', () => {
+        cBtn.style.transform = 'scale(1.05)';
+        cBtn.style.boxShadow = '0 8px 25px rgba(0, 204, 255, 0.6)';
+    });
+    cBtn.addEventListener('mouseleave', () => {
+        cBtn.style.transform = 'scale(1)';
+        cBtn.style.boxShadow = '0 6px 20px rgba(0, 204, 255, 0.4)';
+    });
+    cBtn.addEventListener('mousedown', () => cBtn.style.transform = 'scale(0.95)');
+    cBtn.addEventListener('mouseup', () => cBtn.style.transform = 'scale(1.05)');
+
+    cBtn.addEventListener('click', () => {
+        isModalOpen = false;
+        mod.style.transform = 'translate(-50%, -50%) scale(0)';
+    });
+    
+    document.body.appendChild(mod);
+    return { modal: mod, closeBtn: cBtn };
+}
+
+const rulesObj = createModal('rules-modal', 'HOW TO PLAY', `
+    <p style="font-size:16px; line-height:1.6; text-align:left;">
+        <b>[A] / [D] or [Left] / [Right]:</b> Change lanes<br><br>
+        <b>[W] / [Space] or [Up]:</b> Jump<br><br>
+        <b>[2]:</b> Swap Stone (Heavy) & Beach Ball (Floaty)<br><br>
+        <b>[9] or [Mouse Click]:</b> Pause / Resume Game<br><br>
+        <em>You can smash pins with the Stone ball, but avoid water with it or you'll sink! On the other hand the Beach ball is floaty on water and it's also very useful to jump for long distances, but don't hit the pins because it's not strong enough!</em><br><br>
+        <b> The objective is to survive for the longest amount of time possible and hit as many pins as you can! Good luck and have fun playing!</b>
+    </p>
+`);
+
+howToPlayBtn.addEventListener('click', () => {
+    isModalOpen = true;
+    rulesObj.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+});
+
+const texObj = createModal('tex-modal', 'CHOOSE TEXTURES', `
+    <div style="text-align:left; margin-bottom: 20px;">
+        <label style="display:block; margin-bottom:5px; font-weight:bold;">Stone Ball Texture:</label>
+        <select id="stone-tex-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
+            <option value="textures/bricks_color.png">Default (Bricks)</option>
+            <option value="textures/granite_color.jpg">Granite</option>
+            <option value="textures/marble_color.jpg">Marble</option>
+            <option value="textures/concrete_color.png">Concrete</option>
+        </select>
+    </div>
+    <div style="text-align:left; margin-bottom: 20px;">
+        <label style="display:block; margin-bottom:5px; font-weight:bold;">Beach Ball Color:</label>
+        <select id="beach-col-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
+            <option value="0xaa0000">Default (Red)</option>
+            <option value="0x0000aa">Blue</option>
+            <option value="0x00aa00">Green</option>
+            <option value="0xaa00aa">Purple</option>
+        </select>
+    </div>
+`);
+texObj.closeBtn.innerText = "SAVE & CLOSE";
+texturesBtn.addEventListener('click', () => {
+    isModalOpen = true;
+    texObj.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+});
+
+const setObj = createModal('set-modal', 'SETTINGS', `
+    <div style="display:flex; justify-content:space-around; margin: 30px 0;">
+        <button id="mmusic-btn" style="padding:10px 20px; font-size:1.2rem; cursor:pointer; background:#00ccff; border:none; border-radius:30px; color:#111; font-weight:bold; box-shadow:0 4px 15px rgba(0,204,255,0.4); transition:all 0.2s ease;">MUSIC: ON</button>
+        <button id="msfx-btn" style="padding:10px 20px; font-size:1.2rem; cursor:pointer; background:#00ccff; border:none; border-radius:30px; color:#111; font-weight:bold; box-shadow:0 4px 15px rgba(0,204,255,0.4); transition:all 0.2s ease;">SFX: ON</button>
+    </div>
+`);
+settingsBtn.addEventListener('click', () => {
+    isModalOpen = true;
+    setObj.modal.style.transform = 'translate(-50%, -50%) scale(1)';
+});
+
+const toggleM = () => { 
+    musicEnabled = !musicEnabled; 
+    document.getElementById('mmusic-btn').innerText = `MUSIC: ${musicEnabled?'ON':'OFF'}`;
+    pMusicBtn.innerText = `MUSIC: ${musicEnabled?'ON':'OFF'}`;
+};
+const toggleS = () => { 
+    sfxEnabled = !sfxEnabled; 
+    document.getElementById('msfx-btn').innerText = `SFX: ${sfxEnabled?'ON':'OFF'}`;
+    pSfxBtn.innerText = `SFX: ${sfxEnabled?'ON':'OFF'}`;
+};
+document.getElementById('mmusic-btn').addEventListener('click', toggleM);
+pMusicBtn.addEventListener('click', toggleM);
+document.getElementById('msfx-btn').addEventListener('click', toggleS);
+pSfxBtn.addEventListener('click', toggleS);
 
 // --- CREDITS UI (MENU ONLY) ---
 const creditLeft = document.createElement('div');
@@ -502,6 +617,10 @@ function showNewHighScoreText() {
     void newHighScoreText.offsetWidth;
     newHighScoreText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
     newHighScoreText.style.transform = 'translate(-50%, -50%) scale(1)';
+    
+    playTone(600, 'sine', 0.1);
+    setTimeout(() => playTone(800, 'sine', 0.2), 100);
+
     setTimeout(() => {
         newHighScoreText.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
         newHighScoreText.style.transform = 'translate(-50%, -50%) scale(1.5)';
@@ -534,6 +653,9 @@ function showGameOverText() {
     void gameOverText.offsetWidth;
     gameOverText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
     gameOverText.style.transform = 'translate(-50%, -50%) scale(1)';
+    
+    playTone(150, 'sawtooth', 0.8, 0.15);
+    setTimeout(() => playTone(100, 'sawtooth', 1.0, 0.15), 400);
 }
 
 function hideGameOverText() {
@@ -561,7 +683,7 @@ const materials = {
 };
 
 // Texture Save Logic
-saveTexturesBtn.addEventListener('click', () => {
+texObj.closeBtn.addEventListener('click', () => {
     const stoneVal = document.getElementById('stone-tex-select').value;
     const beachVal = parseInt(document.getElementById('beach-col-select').value, 16);
     
@@ -572,21 +694,32 @@ saveTexturesBtn.addEventListener('click', () => {
     
     materials.beachBall.color.setHex(beachVal);
     materials.beachBall.needsUpdate = true;
-    
-    isModalOpen = false;
-    texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
 });
 
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
 const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: startingFloorTexture, roughness: 0.9, metalness: 0.05 });
 
+const puddleShape = new THREE.Shape();
+puddleShape.moveTo(0, 6.5);
+puddleShape.bezierCurveTo(2.5, 5.0, 1.0, 2.5, 2.0, 0);
+puddleShape.bezierCurveTo(3.0, -3.0, 1.5, -5.5, 0.5, -6.5);
+puddleShape.bezierCurveTo(-2.0, -6.0, -1.5, -2.5, -2.0, 0);
+puddleShape.bezierCurveTo(-2.5, 3.0, -3.0, 5.0, 0, 6.5);
+
+const puddleGeo = new THREE.ShapeGeometry(puddleShape, 32);
+
 const puddleSurfaceMat = new THREE.MeshStandardMaterial({ 
     color: 0x1ca3ec, 
     transparent: true, 
     opacity: 0.8,    
-    roughness: 0.3,  
-    metalness: 0.2
+    roughness: 0.8,  
+    metalness: 0.05
 });
+
+// Splash Particle Setup
+const splashParticles = [];
+const splashGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+const splashMat = new THREE.MeshBasicMaterial({color: 0x88ccff, transparent: true, opacity: 0.8});
 
 const physicsMaterials = { ground: new CANNON.Material('ground'), ball: new CANNON.Material('ball'), obstacle: new CANNON.Material('obstacle') };
 world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, physicsMaterials.ball, { friction: 0.0, restitution: 0.2 }));
@@ -626,8 +759,11 @@ world.addBody(playerBody);
 playerBody.addEventListener('collide', (e) => {
     if (gameState !== 'PLAYING') return;
     if (e.body.isPin) {
-        if (currentForm === 'stone') e.body.needsShatter = true; 
-        else {
+        if (currentForm === 'stone') {
+            e.body.needsShatter = true;
+            playTone(250 + Math.random()*50, 'triangle', 0.15, 0.15); 
+            setTimeout(() => playTone(150 + Math.random()*50, 'square', 0.15, 0.05), 30);
+        } else {
             if (gameState !== 'GAMEOVER') {
                 gameState = 'GAMEOVER'; 
                 showGameOverText();
@@ -647,14 +783,6 @@ let nextSpawnZ = -40;
 let nextGateZ = -1000; 
 let wasGap = false;
 
-const puddleShape = new THREE.Shape();
-puddleShape.moveTo(0, 6);
-puddleShape.bezierCurveTo(2.2, 4.5, 1.2, 2.0, 1.8, 0);
-puddleShape.bezierCurveTo(2.4, -2.5, 1.5, -4.8, 0.2, -6);
-puddleShape.bezierCurveTo(-1.8, -5.5, -2.2, -2.0, -1.7, 0);
-puddleShape.bezierCurveTo(-1.2, 2.5, -2.5, 4.5, 0, 6);
-const puddleGeo = new THREE.ShapeGeometry(puddleShape, 32);
-
 function spawnGate(zPos) {
     const gateGroup = new THREE.Group();
     gateGroup.position.set(0, 0, zPos);
@@ -663,25 +791,25 @@ function spawnGate(zPos) {
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
     const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
 
-    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 24, 2), frameMat);
-    leftPillar.position.set(-7, 12, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
+    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
+    leftPillar.position.set(-7, 7.5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
     
-    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 24, 2), frameMat);
-    rightPillar.position.set(7, 12, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
+    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
+    rightPillar.position.set(7, 7.5, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
 
     const topBeam = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 2), frameMat);
-    topBeam.position.set(0, 25, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
+    topBeam.position.set(0, 16, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
 
-    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 12, 1)), position: new CANNON.Vec3(-7, 12, zPos) });
+    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(-7, 7.5, zPos) });
     world.addBody(leftPillarBody);
-    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 12, 1)), position: new CANNON.Vec3(7, 12, zPos) });
+    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(7, 7.5, zPos) });
     world.addBody(rightPillarBody);
 
     const leftDoorPivot = new THREE.Group();
     leftDoorPivot.position.set(-6, 0, 0); 
     
-    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 24, 0.5), doorMat);
-    leftDoor.position.set(3, 12, 0); 
+    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
+    leftDoor.position.set(3, 7.5, 0); 
     leftDoor.castShadow = true;
     
     const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -694,8 +822,8 @@ function spawnGate(zPos) {
     const rightDoorPivot = new THREE.Group();
     rightDoorPivot.position.set(6, 0, 0); 
 
-    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 24, 0.5), doorMat);
-    rightDoor.position.set(-3, 12, 0); 
+    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
+    rightDoor.position.set(-3, 7.5, 0); 
     rightDoor.castShadow = true;
 
     const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -714,6 +842,7 @@ function spawnGate(zPos) {
         zPos: zPos,
         opened: false,
         passed: false,
+        soundPlayed: false,
         leftPillarBody: leftPillarBody,
         rightPillarBody: rightPillarBody
     });
@@ -808,6 +937,10 @@ function triggerPlayAnimation() {
     if (isTransitioning) return;
     isTransitioning = true;
     
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    
     for(let i = 0; i < 20; i++) {
         const pMesh = new THREE.Mesh(pinGeo, pinMat); 
         pMesh.castShadow = true; pMesh.receiveShadow = true; 
@@ -842,6 +975,11 @@ function triggerPlayAnimation() {
         texturesBtn.style.transform = 'scale(1.5, 0.1)';
         texturesBtn.style.opacity = '0';
     }
+    if (settingsBtn) {
+        settingsBtn.style.transition = 'all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        settingsBtn.style.transform = 'scale(1.5, 0.1)';
+        settingsBtn.style.opacity = '0';
+    }
     if (startHintText) {
         startHintText.style.transition = 'opacity 0.3s ease';
         startHintText.style.opacity = '0';
@@ -863,6 +1001,11 @@ function triggerPlayAnimation() {
             texturesBtn.style.transform = 'scale(1)';
             texturesBtn.style.opacity = '1';
         }
+        if (settingsBtn) {
+            settingsBtn.style.transition = 'transform 0.15s ease-out';
+            settingsBtn.style.transform = 'scale(1)';
+            settingsBtn.style.opacity = '1';
+        }
         if (startHintText) {
             startHintText.style.transition = 'none';
             startHintText.style.opacity = '0.8';
@@ -876,8 +1019,10 @@ function resetGame() {
     hideGameOverText();
     creditLeft.style.display = 'none';
     creditRight.style.display = 'none';
-    rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
-    texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+    rulesObj.modal.style.transform = 'translate(-50%, -50%) scale(0)';
+    texObj.modal.style.transform = 'translate(-50%, -50%) scale(0)';
+    setObj.modal.style.transform = 'translate(-50%, -50%) scale(0)';
+    pauseOverlay.style.display = 'none';
     isModalOpen = false;
     sinkTarget = null;
     
@@ -889,6 +1034,7 @@ function resetGame() {
     puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
     windmills.forEach(w => { scene.remove(w.group); world.removeBody(w.body); }); windmills.length = 0;
     debrisList.forEach(d => { scene.remove(d.mesh); world.removeBody(d.body); }); debrisList.length = 0;
+    splashParticles.forEach(sp => { scene.remove(sp.mesh); }); splashParticles.length = 0;
     
     gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
 
@@ -896,7 +1042,6 @@ function resetGame() {
     currentLane = 0; nextSpawnZ = -165; nextGateZ = -1000;
     survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false; gatesPassed = 0;
     
-    // CHANGED: Default is Beach ball
     currentForm = 'beachBall'; playerMesh.material = materials.beachBall; playerMesh.scale.set(1,1,1);
     
     materials.stone.transparent = false;
@@ -904,7 +1049,6 @@ function resetGame() {
     materials.beachBall.transparent = false;
     materials.beachBall.opacity = 1.0;
     
-    // CHANGED: Starting values to match floaty ball
     baseSpeed = -35; forwardSpeed = -35;
     playerBody.mass = 1.5; playerBody.updateMassProperties(); 
     
@@ -914,10 +1058,7 @@ function resetGame() {
     playerBody.position.set(0, 5, 0); playerBody.velocity.set(0,0,0); playerBody.angularVelocity.set(0,0,0);
     
     isPaused = false;
-    pauseBtn.innerText = "PAUSE (9)";
-    pauseBtn.style.display = 'block';
     
-    // CHANGED: Update UI to match the starting beach ball mode
     UI_Status.innerText = "Current Form: Beach Ball (Floaty)"; UI_Status.style.color = "#33ccff"; scoreHud.style.color = "#fff";
     uiHUD.style.display = 'block'; scoreHud.style.display = 'block'; mainMenu.style.display = 'none';
     menuScene.visible = false; playerMesh.visible = true; gameState = 'PLAYING';
@@ -927,7 +1068,6 @@ if (playBtn) {
     playBtn.addEventListener('click', triggerPlayAnimation);
 }
 
-// CHANGED: Delay the first spawn so the scene resets cleanly
 spawnStartingRunway(); 
 
 // ==========================================
@@ -936,6 +1076,7 @@ spawnStartingRunway();
 
 window.addEventListener('mousedown', (e) => {
     if (e.target.tagName.toLowerCase() === 'button') return;
+    if (e.target.closest('#pause-overlay')) return;
     
     if (gameState === 'PLAYING') {
         togglePause();
@@ -1018,7 +1159,6 @@ function animate() {
             showNewHighScoreText();
         }
         
-        // CHANGED: Speed text moved under pins
         let speedText = speedMultiplier > 1.1 ? `<br><span style="color:#808080">x${speedMultiplier.toFixed(1)} SPEED!</span>` : "";
         scoreHud.innerHTML = `Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
     }
@@ -1118,6 +1258,7 @@ function animate() {
                         
                         sinkTarget = { x: p.x, y: -3, z: p.z - 8 }; 
                         showGameOverText();
+                        playTone(100, 'sine', 1.0, 0.2); // Sinking sound
                         UI_Status.innerHTML = "GLUB GLUB... You sank!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333"; 
                         
                         playerBody.type = CANNON.Body.KINEMATIC;
@@ -1125,6 +1266,16 @@ function animate() {
                         playerBody.angularVelocity.set(0, 2, 0);
                         playerBody.collisionFilterGroup = 0;
                         playerBody.collisionFilterMask = 0;
+                    }
+                } else {
+                    if (Math.random() < 0.6) {
+                        playTone(400 + Math.random()*300, 'triangle', 0.1, 0.04);
+                        for(let k=0; k<6; k++) {
+                           let sp = new THREE.Mesh(splashGeo, splashMat);
+                           sp.position.set(playerBody.position.x + (Math.random()-0.5)*3, 0.2, playerBody.position.z + (Math.random()-0.5)*3);
+                           scene.add(sp);
+                           splashParticles.push({mesh: sp, vx: (Math.random()-0.5)*8, vy: 6 + Math.random()*6, vz: (Math.random()-0.5)*8 + playerBody.velocity.z, age: 0});
+                        }
                     }
                 }
             }
@@ -1144,7 +1295,7 @@ function animate() {
             playerMesh.material.opacity = Math.max(0, playerMesh.material.opacity - delta * 0.5); 
         }
 
-        if (gameOverTimer > 0.8) {
+        if (gameOverTimer > 1.5) {
             if (currentScore > highScore.score) {
                 highScore = { score: currentScore, time: survivalTime, distance: distanceTraveled, pins: pinsSmashed };
             }
@@ -1155,17 +1306,16 @@ function animate() {
             
             latestScoreText.innerHTML = `Latest Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span> | <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
             
-            pauseBtn.style.display = 'none';
             creditLeft.style.display = 'block';
             creditRight.style.display = 'block';
             hideGameOverText();
             
-            // CHANGED: Wipe the track and regenerate the starting runway so it correctly renders in MENU state.
             trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
             obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
             puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
             windmills.forEach(w => { scene.remove(w.group); world.removeBody(w.body); }); windmills.length = 0;
             debrisList.forEach(d => { scene.remove(d.mesh); world.removeBody(d.body); }); debrisList.length = 0;
+            splashParticles.forEach(sp => { scene.remove(sp.mesh); }); splashParticles.length = 0;
             gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
             
             spawnStartingRunway();
@@ -1177,6 +1327,21 @@ function animate() {
 
     if (gameState !== 'MENU') {
         playerMesh.position.copy(playerBody.position); playerMesh.quaternion.copy(playerBody.quaternion);
+        
+        // Process splash particles
+        for(let i = splashParticles.length - 1; i >= 0; i--) {
+            let sp = splashParticles[i];
+            sp.age += delta;
+            sp.vy -= 15 * delta; // Gravity
+            sp.mesh.position.x += sp.vx * delta;
+            sp.mesh.position.y += sp.vy * delta;
+            sp.mesh.position.z += sp.vz * delta;
+            sp.mesh.material.opacity = 1.0 - (sp.age / 0.5);
+            if (sp.age > 0.5) {
+                scene.remove(sp.mesh);
+                splashParticles.splice(i, 1);
+            }
+        }
         
         for (let i = trackTiles.length - 1; i >= 0; i--) {
             let t = trackTiles[i];
@@ -1190,6 +1355,10 @@ function animate() {
             let distToGate = playerBody.position.z - g.zPos; 
 
             if (distToGate < 80 && distToGate > -20) {
+                if (!g.soundPlayed) {
+                    playTone(200, 'triangle', 0.5, 0.05); // Gate open rumble
+                    g.soundPlayed = true;
+                }
                 g.opened = true;
             }
 
@@ -1197,6 +1366,9 @@ function animate() {
                 g.passed = true;
                 gatesPassed++;
                 showStageText(gatesPassed);
+                playTone(440, 'square', 0.1, 0.05);
+                setTimeout(() => playTone(554, 'square', 0.1, 0.05), 100);
+                setTimeout(() => playTone(659, 'square', 0.2, 0.05), 200);
             }
 
             if (g.opened) {
