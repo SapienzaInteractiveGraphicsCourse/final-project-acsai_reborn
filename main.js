@@ -94,14 +94,19 @@ scene.add(cloudsGroup);
 let gameState = 'MENU'; 
 let currentForm = 'stone'; 
 let isSinking = false;
-let sinkTarget = null; // Tracks the center of the puddle for smooth sinking
+let sinkTarget = null;
 
 let survivalTime = 0;
 let pinsSmashed = 0;
 let distanceTraveled = 0;
 let gameOverTimer = 0;
 let gatesPassed = 0; 
-let gameElapsedTime = 0; // Tracks game time independent of pause
+let gameElapsedTime = 0; 
+
+// High Score Variables
+let highScore = { score: 0, time: 0, distance: 0, pins: 0 };
+let currentScore = 0;
+let hasReachedNewHighScore = false;
 
 let isModalOpen = false;
 
@@ -110,6 +115,39 @@ const mainMenu = document.getElementById('main-menu');
 const playBtn = document.getElementById('play-btn');
 const latestScoreText = document.getElementById('latest-score');
 const UI_Status = document.getElementById('status');
+
+// --- CHANGED: CSS FOR FLASHING "NEW!" BADGE ---
+const flashStyle = document.createElement('style');
+flashStyle.innerHTML = `
+    @keyframes flashNewBadge {
+        0%, 100% { opacity: 1; transform: scale(1) rotate(-5deg); }
+        50% { opacity: 0.6; transform: scale(1.1) rotate(5deg); }
+    }
+    .new-score-badge {
+        color: #00ccff;
+        font-family: "Arial Black", Arial, sans-serif;
+        text-shadow: 0px 0px 15px rgba(0, 204, 255, 0.8);
+        display: inline-block;
+        animation: flashNewBadge 0.6s infinite ease-in-out;
+        margin-left: 15px;
+        font-size: 1.8rem;
+        vertical-align: middle;
+    }
+`;
+document.head.appendChild(flashStyle);
+
+// --- MAIN MENU HIGH SCORE DISPLAY ---
+const highScoreMenuText = document.createElement('div');
+highScoreMenuText.innerHTML = `High Score: <span style="color:#00ccff">0</span> | <span style="color:#00e676">0.0s</span> | <span style="color:#00e676">0m</span> | <span style="color:#ffcc00">0</span> Pins`;
+highScoreMenuText.style.fontSize = '1.5rem';
+highScoreMenuText.style.marginBottom = '10px';
+highScoreMenuText.style.color = '#fff';
+highScoreMenuText.style.textShadow = '1px 1px 5px rgba(0,0,0,1)';
+if (latestScoreText && latestScoreText.parentNode) {
+    latestScoreText.parentNode.insertBefore(highScoreMenuText, latestScoreText);
+} else {
+    mainMenu.appendChild(highScoreMenuText);
+}
 
 // HUD for scores
 const scoreHud = document.createElement('div');
@@ -124,7 +162,7 @@ document.body.appendChild(scoreHud);
 const pauseBtn = document.createElement('button');
 pauseBtn.innerText = "PAUSE (9)";
 pauseBtn.style.position = 'absolute';
-pauseBtn.style.top = '110px'; 
+pauseBtn.style.top = '140px'; // Shifted down to accommodate the bigger HUD
 pauseBtn.style.right = '10px';
 pauseBtn.style.padding = '10px 15px';
 pauseBtn.style.background = 'rgba(0,0,0,0.7)';
@@ -311,7 +349,7 @@ texturesModal.innerHTML = `
     <div style="text-align:left; margin-bottom: 20px;">
         <label style="display:block; margin-bottom:5px; font-weight:bold;">Stone Ball Texture:</label>
         <select id="stone-tex-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
-            <option value="textures/stone_color.png">Default (Bricks)</option>
+            <option value="textures/bricks_color.png">Default (Bricks)</option>
             <option value="textures/granite_color.jpg">Granite</option>
             <option value="textures/marble_color.jpg">Marble</option>
             <option value="textures/concrete_color.png">Concrete</option>
@@ -438,6 +476,38 @@ function showStageText(num) {
     }, 1200);
 }
 
+// --- NEW HIGH SCORE UI ---
+const newHighScoreText = document.createElement('div');
+newHighScoreText.innerText = "NEW HIGH SCORE REACHED!";
+newHighScoreText.style.position = 'absolute';
+newHighScoreText.style.top = '15%';
+newHighScoreText.style.left = '50%';
+newHighScoreText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+newHighScoreText.style.color = '#00ccff';
+newHighScoreText.style.fontSize = '40px';
+newHighScoreText.style.fontWeight = '900';
+newHighScoreText.style.fontFamily = '"Arial Black", Arial, sans-serif';
+newHighScoreText.style.textShadow = '0px 0px 20px rgba(0, 204, 255, 0.8), 4px 4px 10px rgba(0,0,0,0.8)';
+newHighScoreText.style.pointerEvents = 'none';
+newHighScoreText.style.opacity = '0';
+newHighScoreText.style.zIndex = '1000';
+newHighScoreText.style.textAlign = 'center';
+document.body.appendChild(newHighScoreText);
+
+function showNewHighScoreText() {
+    newHighScoreText.style.transition = 'none';
+    newHighScoreText.style.transform = 'translate(-50%, -50%) scale(0.1)';
+    newHighScoreText.style.opacity = '1';
+    void newHighScoreText.offsetWidth;
+    newHighScoreText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
+    newHighScoreText.style.transform = 'translate(-50%, -50%) scale(1)';
+    setTimeout(() => {
+        newHighScoreText.style.transition = 'transform 0.5s ease-in, opacity 0.5s ease-in';
+        newHighScoreText.style.transform = 'translate(-50%, -50%) scale(1.5)';
+        newHighScoreText.style.opacity = '0';
+    }, 2000);
+}
+
 // --- GAME OVER UI ---
 const gameOverText = document.createElement('div');
 gameOverText.innerText = "GAME OVER";
@@ -471,7 +541,7 @@ function hideGameOverText() {
 
 const textureLoader = new THREE.TextureLoader();
 
-const stoneTexture = textureLoader.load('textures/stone_color.png');
+const stoneTexture = textureLoader.load('textures/bricks_color.png');
 stoneTexture.colorSpace = THREE.SRGBColorSpace; 
 
 const floorTexture = textureLoader.load('textures/floor.jpg');
@@ -592,26 +662,25 @@ function spawnGate(zPos) {
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
     const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
 
-    // CHANGED: Gates midway height (15 units)
-    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
-    leftPillar.position.set(-7, 7.5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
+    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 24, 2), frameMat);
+    leftPillar.position.set(-7, 12, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
     
-    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
-    rightPillar.position.set(7, 7.5, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
+    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 24, 2), frameMat);
+    rightPillar.position.set(7, 12, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
 
     const topBeam = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 2), frameMat);
-    topBeam.position.set(0, 16, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
+    topBeam.position.set(0, 25, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
 
-    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(-7, 7.5, zPos) });
+    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 12, 1)), position: new CANNON.Vec3(-7, 12, zPos) });
     world.addBody(leftPillarBody);
-    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(7, 7.5, zPos) });
+    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 12, 1)), position: new CANNON.Vec3(7, 12, zPos) });
     world.addBody(rightPillarBody);
 
     const leftDoorPivot = new THREE.Group();
     leftDoorPivot.position.set(-6, 0, 0); 
     
-    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
-    leftDoor.position.set(3, 7.5, 0); 
+    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 24, 0.5), doorMat);
+    leftDoor.position.set(3, 12, 0); 
     leftDoor.castShadow = true;
     
     const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -624,8 +693,8 @@ function spawnGate(zPos) {
     const rightDoorPivot = new THREE.Group();
     rightDoorPivot.position.set(6, 0, 0); 
 
-    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
-    rightDoor.position.set(-3, 7.5, 0); 
+    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 24, 0.5), doorMat);
+    rightDoor.position.set(-3, 12, 0); 
     rightDoor.castShadow = true;
 
     const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -811,6 +880,9 @@ function resetGame() {
     isModalOpen = false;
     sinkTarget = null;
     
+    currentScore = 0;
+    hasReachedNewHighScore = false;
+    
     trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
     obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
     puddles.forEach(p => { scene.remove(p.group); p.mirror.dispose(); }); puddles.length = 0;
@@ -934,8 +1006,15 @@ function animate() {
         const speedMultiplier = Math.min(2.0, 1.0 + (distanceTraveled / 3000));
         forwardSpeed = baseSpeed * speedMultiplier;
         
+        currentScore = (survivalTime * 10) + distanceTraveled + (pinsSmashed * 50);
+        
+        if (highScore.score > 0 && currentScore > highScore.score && !hasReachedNewHighScore) {
+            hasReachedNewHighScore = true;
+            showNewHighScoreText();
+        }
+        
         let speedText = speedMultiplier > 1.1 ? ` <span style="color:#ff3333">(x${speedMultiplier.toFixed(1)} SPEED!)</span>` : "";
-        scoreHud.innerHTML = `Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span>${speedText}<br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>`;
+        scoreHud.innerHTML = `Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span>${speedText}<br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>`;
     }
 
     // ------------------------------------------
@@ -1060,7 +1139,15 @@ function animate() {
         }
 
         if (gameOverTimer > 0.8) {
-            latestScoreText.innerHTML = `Latest Score: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
+            if (currentScore > highScore.score) {
+                highScore = { score: currentScore, time: survivalTime, distance: distanceTraveled, pins: pinsSmashed };
+            }
+            
+            const badgeHtml = hasReachedNewHighScore ? `<span class="new-score-badge">NEW!</span>` : "";
+            
+            highScoreMenuText.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}</span> | <span style="color:#00e676">${highScore.time.toFixed(1)}s</span> | <span style="color:#00e676">${highScore.distance}m</span> | <span style="color:#ffcc00">${highScore.pins}</span> Pins ${badgeHtml}`;
+            
+            latestScoreText.innerHTML = `Latest Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span> | <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
             
             pauseBtn.style.display = 'none';
             creditLeft.style.display = 'block';
