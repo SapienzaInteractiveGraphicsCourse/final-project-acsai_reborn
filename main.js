@@ -35,6 +35,13 @@ dirLight.shadow.camera.left = -30; dirLight.shadow.camera.right = 30;
 dirLight.shadow.mapSize.width = 2048; dirLight.shadow.mapSize.height = 2048;
 scene.add(dirLight);
 
+const moonLight = new THREE.DirectionalLight(0xaaccff, 0.0);
+moonLight.castShadow = true;
+moonLight.shadow.camera.top = 50; moonLight.shadow.camera.bottom = -50;
+moonLight.shadow.camera.left = -30; moonLight.shadow.camera.right = 30;
+moonLight.shadow.mapSize.width = 2048; moonLight.shadow.mapSize.height = 2048;
+scene.add(moonLight);
+
 const sunMesh = new THREE.Mesh(new THREE.SphereGeometry(15, 32, 32), new THREE.MeshBasicMaterial({ color: 0xffea00, fog: false }));
 scene.add(sunMesh);
 
@@ -87,6 +94,7 @@ scene.add(cloudsGroup);
 let gameState = 'MENU'; 
 let currentForm = 'stone'; 
 let isSinking = false;
+let sinkTarget = null; // Tracks the center of the puddle for smooth sinking
 
 let survivalTime = 0;
 let pinsSmashed = 0;
@@ -94,6 +102,8 @@ let distanceTraveled = 0;
 let gameOverTimer = 0;
 let gatesPassed = 0; 
 let gameElapsedTime = 0; // Tracks game time independent of pause
+
+let isModalOpen = false;
 
 const uiHUD = document.getElementById('ui');
 const mainMenu = document.getElementById('main-menu');
@@ -140,7 +150,6 @@ pauseBtn.addEventListener('click', togglePause);
 const howToPlayBtn = document.createElement('button');
 howToPlayBtn.innerText = "HOW TO PLAY";
 
-// Apply exact Play button styling, but slightly smaller padding and font size
 howToPlayBtn.style.padding = "10px 25px";
 howToPlayBtn.style.fontSize = "1.2rem";
 howToPlayBtn.style.cursor = "pointer";
@@ -155,7 +164,6 @@ howToPlayBtn.style.transition = "all 0.2s ease";
 howToPlayBtn.style.display = "block";
 howToPlayBtn.style.margin = "15px auto 0 auto";
 
-// Simulate the CSS hover/active states for the How To Play Button
 howToPlayBtn.addEventListener('mouseenter', () => {
     howToPlayBtn.style.transform = 'scale(1.05)';
     howToPlayBtn.style.background = '#00c853';
@@ -193,7 +201,6 @@ rulesModal.style.color = '#fff';
 rulesModal.style.fontFamily = 'sans-serif';
 rulesModal.style.textAlign = 'center';
 rulesModal.style.zIndex = '3000';
-// Smooth ease-in-out transition instead of jumpy cubic-bezier
 rulesModal.style.transition = 'transform 0.3s ease-in-out';
 rulesModal.innerHTML = `
     <h2 style="color:#00ccff; margin-top:0;">HOW TO PLAY</h2>
@@ -239,13 +246,138 @@ closeRulesBtn.addEventListener('mouseup', () => {
 });
 
 howToPlayBtn.addEventListener('click', () => {
+    isModalOpen = true;
     rulesModal.style.transform = 'translate(-50%, -50%) scale(1)';
 });
 
 closeRulesBtn.addEventListener('click', () => {
-    // Closes smoothly directly to the center
+    isModalOpen = false;
     rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
 });
+
+// --- TEXTURES BUTTON & MODAL ---
+const texturesBtn = document.createElement('button');
+texturesBtn.innerText = "TEXTURES";
+texturesBtn.style.padding = "10px 25px";
+texturesBtn.style.fontSize = "1.2rem";
+texturesBtn.style.cursor = "pointer";
+texturesBtn.style.background = "#00e676";
+texturesBtn.style.border = "none";
+texturesBtn.style.borderRadius = "50px";
+texturesBtn.style.color = "#111";
+texturesBtn.style.fontWeight = "900";
+texturesBtn.style.letterSpacing = "1px";
+texturesBtn.style.boxShadow = "0 6px 20px rgba(0, 230, 118, 0.4)";
+texturesBtn.style.transition = "all 0.2s ease";
+texturesBtn.style.display = "block";
+texturesBtn.style.margin = "15px auto 0 auto";
+
+texturesBtn.addEventListener('mouseenter', () => {
+    texturesBtn.style.transform = 'scale(1.05)';
+    texturesBtn.style.background = '#00c853';
+    texturesBtn.style.boxShadow = '0 8px 25px rgba(0, 230, 118, 0.6)';
+});
+texturesBtn.addEventListener('mouseleave', () => {
+    texturesBtn.style.transform = 'scale(1)';
+    texturesBtn.style.background = '#00e676';
+    texturesBtn.style.boxShadow = '0 6px 20px rgba(0, 230, 118, 0.4)';
+});
+texturesBtn.addEventListener('mousedown', () => {
+    texturesBtn.style.transform = 'scale(0.95)';
+});
+texturesBtn.addEventListener('mouseup', () => {
+    texturesBtn.style.transform = 'scale(1.05)';
+});
+
+howToPlayBtn.parentNode.insertBefore(texturesBtn, howToPlayBtn.nextSibling);
+
+const texturesModal = document.createElement('div');
+texturesModal.style.position = 'absolute';
+texturesModal.style.top = '50%';
+texturesModal.style.left = '50%';
+texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+texturesModal.style.width = '400px';
+texturesModal.style.background = 'rgba(0, 0, 0, 0.9)';
+texturesModal.style.border = '3px solid #00ccff';
+texturesModal.style.borderRadius = '15px';
+texturesModal.style.padding = '30px';
+texturesModal.style.color = '#fff';
+texturesModal.style.fontFamily = 'sans-serif';
+texturesModal.style.textAlign = 'center';
+texturesModal.style.zIndex = '3000';
+texturesModal.style.transition = 'transform 0.3s ease-in-out';
+texturesModal.innerHTML = `
+    <h2 style="color:#00ccff; margin-top:0;">CHOOSE TEXTURES</h2>
+    <div style="text-align:left; margin-bottom: 20px;">
+        <label style="display:block; margin-bottom:5px; font-weight:bold;">Stone Ball Texture:</label>
+        <select id="stone-tex-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
+            <option value="textures/stone_color.png">Default (Bricks)</option>
+            <option value="textures/granite_color.jpg">Granite</option>
+            <option value="textures/marble_color.jpg">Marble</option>
+            <option value="textures/concrete_color.png">Concrete</option>
+        </select>
+    </div>
+    <div style="text-align:left; margin-bottom: 20px;">
+        <label style="display:block; margin-bottom:5px; font-weight:bold;">Beach Ball Color:</label>
+        <select id="beach-col-select" style="width:100%; padding:10px; font-size:16px; border-radius:5px; border:none;">
+            <option value="0xaa0000">Default (Red)</option>
+            <option value="0x0000aa">Blue</option>
+            <option value="0x00aa00">Green</option>
+            <option value="0xaa00aa">Purple</option>
+        </select>
+    </div>
+`;
+document.body.appendChild(texturesModal);
+
+const saveTexturesBtn = document.createElement('button');
+saveTexturesBtn.innerText = "SAVE";
+saveTexturesBtn.style.marginTop = "20px";
+saveTexturesBtn.style.padding = "10px 25px";
+saveTexturesBtn.style.fontSize = "1.2rem";
+saveTexturesBtn.style.fontWeight = "900";
+saveTexturesBtn.style.cursor = "pointer";
+saveTexturesBtn.style.borderRadius = "50px";
+saveTexturesBtn.style.border = "none";
+saveTexturesBtn.style.background = "#00ccff";
+saveTexturesBtn.style.color = "#111"; 
+saveTexturesBtn.style.boxShadow = "0 6px 20px rgba(0, 204, 255, 0.4)";
+saveTexturesBtn.style.transition = "all 0.2s ease";
+texturesModal.appendChild(saveTexturesBtn);
+
+saveTexturesBtn.addEventListener('mouseenter', () => {
+    saveTexturesBtn.style.transform = 'scale(1.05)';
+    saveTexturesBtn.style.boxShadow = '0 8px 25px rgba(0, 204, 255, 0.6)';
+});
+saveTexturesBtn.addEventListener('mouseleave', () => {
+    saveTexturesBtn.style.transform = 'scale(1)';
+    saveTexturesBtn.style.boxShadow = '0 6px 20px rgba(0, 204, 255, 0.4)';
+});
+saveTexturesBtn.addEventListener('mousedown', () => {
+    saveTexturesBtn.style.transform = 'scale(0.95)';
+});
+saveTexturesBtn.addEventListener('mouseup', () => {
+    saveTexturesBtn.style.transform = 'scale(1.05)';
+});
+
+texturesBtn.addEventListener('click', () => {
+    isModalOpen = true;
+    texturesModal.style.transform = 'translate(-50%, -50%) scale(1)';
+});
+
+const startHintText = document.createElement('div');
+startHintText.innerText = "Press the play button, space bar or enter key to start the game";
+startHintText.style.color = "#fff";
+startHintText.style.fontFamily = '"Arial Black", Arial, sans-serif';
+startHintText.style.fontSize = "14px";
+startHintText.style.fontWeight = "normal";
+startHintText.style.marginBottom = "20px";
+startHintText.style.opacity = "0.8";
+
+if (playBtn && playBtn.parentNode) {
+    playBtn.parentNode.insertBefore(startHintText, playBtn);
+} else {
+    mainMenu.appendChild(startHintText);
+}
 
 // --- CREDITS UI (MENU ONLY) ---
 const creditLeft = document.createElement('div');
@@ -353,9 +485,26 @@ startingFloorTexture.wrapS = THREE.RepeatWrapping; startingFloorTexture.wrapT = 
 startingFloorTexture.repeat.set(2, 33); 
 
 const materials = {
-    stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.9, metalness: 0.1 }),
+    stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.65, metalness: 0.2 }),
     beachBall: new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.1 })
 };
+
+// Texture Save Logic
+saveTexturesBtn.addEventListener('click', () => {
+    const stoneVal = document.getElementById('stone-tex-select').value;
+    const beachVal = parseInt(document.getElementById('beach-col-select').value, 16);
+    
+    const newTex = textureLoader.load(stoneVal);
+    newTex.colorSpace = THREE.SRGBColorSpace;
+    materials.stone.map = newTex;
+    materials.stone.needsUpdate = true;
+    
+    materials.beachBall.color.setHex(beachVal);
+    materials.beachBall.needsUpdate = true;
+    
+    isModalOpen = false;
+    texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+});
 
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
 const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: startingFloorTexture, roughness: 0.9, metalness: 0.05 });
@@ -391,15 +540,15 @@ menuScene.position.set(0, 0, -15); scene.add(menuScene);
 // 5. THE PLAYER (BALL)
 // ==========================================
 let currentLane = 0; 
-let baseSpeed = -15; 
-let forwardSpeed = -15; 
+let baseSpeed = -22; 
+let forwardSpeed = -22; 
 const playerRadius = 1; 
 
 const playerMesh = new THREE.Mesh(new THREE.SphereGeometry(playerRadius, 32, 32), materials.stone);
 playerMesh.castShadow = true; playerMesh.visible = false; 
 scene.add(playerMesh);
 
-const playerBody = new CANNON.Body({ mass: 50, shape: new CANNON.Sphere(playerRadius), position: new CANNON.Vec3(0, 5, 0), material: physicsMaterials.ball });
+const playerBody = new CANNON.Body({ mass: 25, shape: new CANNON.Sphere(playerRadius), position: new CANNON.Vec3(0, 5, 0), material: physicsMaterials.ball });
 playerBody.linearDamping = 0; playerBody.angularDamping = 0; 
 world.addBody(playerBody);
 
@@ -443,28 +592,26 @@ function spawnGate(zPos) {
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
     const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
 
-    // Pillars & Beam
-    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), frameMat);
-    leftPillar.position.set(-7, 5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
+    // CHANGED: Gates midway height (15 units)
+    const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
+    leftPillar.position.set(-7, 7.5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
     
-    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 10, 2), frameMat);
-    rightPillar.position.set(7, 5, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
+    const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
+    rightPillar.position.set(7, 7.5, 0); rightPillar.castShadow = true; gateGroup.add(rightPillar);
 
     const topBeam = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 2), frameMat);
-    topBeam.position.set(0, 11, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
+    topBeam.position.set(0, 16, 0); topBeam.castShadow = true; gateGroup.add(topBeam);
 
-    // Physics bounds for the pillars so the player can't cheat around them
-    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 5, 1)), position: new CANNON.Vec3(-7, 5, zPos) });
+    const leftPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(-7, 7.5, zPos) });
     world.addBody(leftPillarBody);
-    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 5, 1)), position: new CANNON.Vec3(7, 5, zPos) });
+    const rightPillarBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(1, 7.5, 1)), position: new CANNON.Vec3(7, 7.5, zPos) });
     world.addBody(rightPillarBody);
 
-    // Left Door Setup (Pivoting from the left edge)
     const leftDoorPivot = new THREE.Group();
     leftDoorPivot.position.set(-6, 0, 0); 
     
-    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 10, 0.5), doorMat);
-    leftDoor.position.set(3, 5, 0); 
+    const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
+    leftDoor.position.set(3, 7.5, 0); 
     leftDoor.castShadow = true;
     
     const leftHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -474,12 +621,11 @@ function spawnGate(zPos) {
     leftDoorPivot.add(leftDoor);
     gateGroup.add(leftDoorPivot);
 
-    // Right Door Setup (Pivoting from the right edge)
     const rightDoorPivot = new THREE.Group();
     rightDoorPivot.position.set(6, 0, 0); 
 
-    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 10, 0.5), doorMat);
-    rightDoor.position.set(-3, 5, 0); 
+    const rightDoor = new THREE.Mesh(new THREE.BoxGeometry(6, 15, 0.5), doorMat);
+    rightDoor.position.set(-3, 7.5, 0); 
     rightDoor.castShadow = true;
 
     const rightHandle = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 16), handleMat);
@@ -533,24 +679,21 @@ function spawnStartingRunway() {
 function spawnNextChunk() {
     const gapChance = Math.min(0.25, 0.15 + (distanceTraveled / 10000));
     
-    // Check gap spawning, ensuring a gap doesn't spawn exactly over a gate chunk
     if (nextSpawnZ < -150 && Math.random() < gapChance && !wasGap && Math.abs(nextSpawnZ) % 300 !== 0 && nextSpawnZ > nextGateZ) {
         wasGap = true; nextSpawnZ -= 30; return; 
     }
     wasGap = false;
 
-    // Spawn the ground tile
     const tMesh = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 30), groundMat);
     tMesh.position.set(0, -1, nextSpawnZ); tMesh.receiveShadow = true; scene.add(tMesh);
     const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, nextSpawnZ) });
     world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
 
-    // Spawn Stage Gate every 1000m
     if (nextSpawnZ <= nextGateZ) {
         spawnGate(nextSpawnZ);
         nextGateZ -= 1000;
         nextSpawnZ -= 30;
-        return; // Don't spawn obstacles/puddles directly inside the gate
+        return; 
     }
 
     if (Math.abs(nextSpawnZ) % 300 === 0) { spawnWindmill(nextSpawnZ); nextSpawnZ -= 30; return; }
@@ -595,7 +738,6 @@ function triggerPlayAnimation() {
     if (isTransitioning) return;
     isTransitioning = true;
     
-    // Spawn 20 pins from behind the camera/title blasting towards the screen
     for(let i = 0; i < 20; i++) {
         const pMesh = new THREE.Mesh(pinGeo, pinMat); 
         pMesh.castShadow = true; pMesh.receiveShadow = true; 
@@ -606,10 +748,8 @@ function triggerPlayAnimation() {
         qY.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
         pBody.addShape(pinShape, new CANNON.Vec3(0, 0, 0), qY);
         
-        // Position behind the title (deep Z) and scatter across X and Y
         pBody.position.set((Math.random() - 0.5) * 20, 5 + Math.random() * 10, -30 - Math.random() * 10);
         
-        // Blast forward towards the camera (Positive Z velocity)
         pBody.velocity.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 20 + 10, 40 + Math.random() * 30);
         pBody.angularVelocity.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
         
@@ -618,7 +758,6 @@ function triggerPlayAnimation() {
     }
 
     if (playBtn) {
-        // Dramatic "smash" animation: widen, flatten, and fade out
         playBtn.style.transition = 'all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
         playBtn.style.transform = 'scale(1.5, 0.1)';
         playBtn.style.opacity = '0';
@@ -628,11 +767,18 @@ function triggerPlayAnimation() {
         howToPlayBtn.style.transform = 'scale(1.5, 0.1)';
         howToPlayBtn.style.opacity = '0';
     }
+    if (texturesBtn) {
+        texturesBtn.style.transition = 'all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55)';
+        texturesBtn.style.transform = 'scale(1.5, 0.1)';
+        texturesBtn.style.opacity = '0';
+    }
+    if (startHintText) {
+        startHintText.style.transition = 'opacity 0.3s ease';
+        startHintText.style.opacity = '0';
+    }
     
-    // Wait for the pins to fly before resetting the game and hiding the menu
     setTimeout(() => {
         if (playBtn) {
-            // Restore styling silently for the next time we return to menu
             playBtn.style.transition = 'none';
             playBtn.style.transform = 'scale(1)';
             playBtn.style.opacity = '1';
@@ -641,6 +787,15 @@ function triggerPlayAnimation() {
             howToPlayBtn.style.transition = 'transform 0.15s ease-out';
             howToPlayBtn.style.transform = 'scale(1)';
             howToPlayBtn.style.opacity = '1';
+        }
+        if (texturesBtn) {
+            texturesBtn.style.transition = 'transform 0.15s ease-out';
+            texturesBtn.style.transform = 'scale(1)';
+            texturesBtn.style.opacity = '1';
+        }
+        if (startHintText) {
+            startHintText.style.transition = 'none';
+            startHintText.style.opacity = '0.8';
         }
         resetGame();
         isTransitioning = false;
@@ -652,6 +807,9 @@ function resetGame() {
     creditLeft.style.display = 'none';
     creditRight.style.display = 'none';
     rulesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+    texturesModal.style.transform = 'translate(-50%, -50%) scale(0)';
+    isModalOpen = false;
+    sinkTarget = null;
     
     trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
     obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
@@ -666,9 +824,18 @@ function resetGame() {
     survivalTime = 0; pinsSmashed = 0; distanceTraveled = 0; gameOverTimer = 0; isSinking = false; gatesPassed = 0;
     
     currentForm = 'stone'; playerMesh.material = materials.stone; playerMesh.scale.set(1,1,1);
-    baseSpeed = -15; forwardSpeed = -15;
-    playerBody.mass = 50; playerBody.updateMassProperties(); 
     
+    materials.stone.transparent = false;
+    materials.stone.opacity = 1.0;
+    materials.beachBall.transparent = false;
+    materials.beachBall.opacity = 1.0;
+    
+    baseSpeed = -22; forwardSpeed = -22;
+    playerBody.mass = 25; playerBody.updateMassProperties(); 
+    
+    playerBody.type = CANNON.Body.DYNAMIC;
+    playerBody.collisionFilterGroup = 1;
+    playerBody.collisionFilterMask = -1;
     playerBody.position.set(0, 5, 0); playerBody.velocity.set(0,0,0); playerBody.angularVelocity.set(0,0,0);
     
     isPaused = false;
@@ -690,9 +857,7 @@ spawnStartingRunway();
 // 7. USER INTERACTION
 // ==========================================
 
-// Click anywhere on screen to pause, ignoring clicks on UI buttons
 window.addEventListener('mousedown', (e) => {
-    // If the click is on any button, ignore it here
     if (e.target.tagName.toLowerCase() === 'button') return;
     
     if (gameState === 'PLAYING') {
@@ -705,21 +870,21 @@ window.addEventListener('keydown', (e) => {
         togglePause();
     }
     
-    // Allow starting game with Space from main menu, animating the play button
-    if (gameState === 'MENU' && e.key === ' ') {
+    if (gameState === 'MENU' && (e.key === ' ' || e.key === 'Enter')) {
+        if (isModalOpen) return;
         triggerPlayAnimation();
         return;
     }
 
     if (gameState !== 'PLAYING') return; 
-    if (isPaused) return; // Prevent input while paused
+    if (isPaused) return; 
 
     if (e.key === 'a' || e.key === 'ArrowLeft') currentLane--;
     if (e.key === 'd' || e.key === 'ArrowRight') currentLane++;
     
     const isGrounded = playerBody.position.y > -0.5 && playerBody.position.y < 2 && Math.abs(playerBody.velocity.y) < 1;
     if ((e.key === 'w' || e.key === ' ' || e.key === 'ArrowUp') && isGrounded && !isSinking) {
-        if (currentForm === 'stone') playerBody.velocity.y = 7;    
+        if (currentForm === 'stone') playerBody.velocity.y = 10;    
         if (currentForm === 'beachBall') playerBody.velocity.y = 25; 
     }
 
@@ -735,9 +900,9 @@ window.addEventListener('keydown', (e) => {
         } else {
             currentForm = 'stone'; 
             playerMesh.material = materials.stone; 
-            playerBody.mass = 50; 
+            playerBody.mass = 25; 
             playerBody.updateMassProperties(); 
-            baseSpeed = -15; 
+            baseSpeed = -22; 
             UI_Status.innerText = "Current Form: Stone (Heavy)"; 
             UI_Status.style.color = "#aaaaaa"; 
         }
@@ -754,7 +919,6 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = clock.getDelta();
     
-    // Stop updating logic if game is paused
     if (isPaused) {
         renderer.render(scene, camera);
         return;
@@ -796,13 +960,16 @@ function animate() {
 
     const dayFactor = Math.max(0, Math.min(1, Math.sin(theta) * 2 + 0.5));
 
-    // FIX FOR CRASH: DirectionalLight.target MUST be an Object3D, not a Vector3
     const tgtPos = gameState === 'MENU' ? menuScene.position : playerMesh.position;
     const tgtObj = gameState === 'MENU' ? giantBall : playerMesh;
 
     dirLight.intensity = Math.max(0, Math.sin(theta)) * 1.5; 
     dirLight.position.copy(tgtPos).add(new THREE.Vector3().copy(sunMesh.position).sub(tgtPos).normalize().multiplyScalar(60)); 
     dirLight.target = tgtObj;
+
+    moonLight.intensity = Math.max(0, Math.sin(theta + Math.PI)) * 0.2;
+    moonLight.position.copy(tgtPos).add(new THREE.Vector3().copy(moonMesh.position).sub(tgtPos).normalize().multiplyScalar(60));
+    moonLight.target = tgtObj;
 
     ambientLight.intensity = 0.4 + dayFactor * 0.4; 
 
@@ -817,13 +984,11 @@ function animate() {
     // ------------------------------------------
     if (gameState === 'MENU') {
         giantBall.rotation.x += 1.5 * delta; giantBall.rotation.y += 0.5 * delta;
-        // Keep rotating pins if they are visible
         if (giantPin1.visible) {
             giantPin1.rotation.y -= 1 * delta; giantPin2.rotation.y += 1 * delta;
         }
         camera.position.set(0, 5, 5); camera.lookAt(menuScene.position);
         
-        // Process the physics of the scattering pins even during the MENU state
         if (isTransitioning) {
             for (let i = debrisList.length - 1; i >= 0; i--) {
                 let d = debrisList[i]; 
@@ -861,12 +1026,20 @@ function animate() {
                 p.mirror.dispose(); 
                 puddles.splice(i, 1); 
             } 
-            else if (Math.abs(playerBody.position.z - p.z) < 6.0 && Math.abs(playerBody.position.x - p.x) < 2.0 && playerBody.position.y < 1.5) {
+            else if (playerBody.position.z < p.z + 6.0 && playerBody.position.z > p.z - 6.0 && Math.abs(playerBody.position.x - p.x) < 2.0 && playerBody.position.y < 1.5) {
                 if (currentForm !== 'beachBall') {
                     if (gameState !== 'GAMEOVER') {
                         gameState = 'GAMEOVER'; isSinking = true;
+                        
+                        sinkTarget = { x: p.x, y: -3, z: p.z - 8 }; 
                         showGameOverText();
                         UI_Status.innerHTML = "GLUB GLUB... You sank!"; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333"; 
+                        
+                        playerBody.type = CANNON.Body.KINEMATIC;
+                        playerBody.velocity.set(0, 0, 0); 
+                        playerBody.angularVelocity.set(0, 2, 0);
+                        playerBody.collisionFilterGroup = 0;
+                        playerBody.collisionFilterMask = 0;
                     }
                 }
             }
@@ -875,13 +1048,18 @@ function animate() {
     } else if (gameState === 'GAMEOVER') {
         gameOverTimer += delta;
         
-        if (isSinking) {
-            playerBody.velocity.set(0, -3, 0); playerBody.angularVelocity.set(0, 15, 0); 
-            if (playerMesh.scale.x > 0.05) playerMesh.scale.multiplyScalar(0.96); 
+        if (isSinking && sinkTarget) {
+            const dx = sinkTarget.x - playerBody.position.x;
+            const dy = sinkTarget.y - playerBody.position.y;
+            const dz = sinkTarget.z - playerBody.position.z;
+            
+            playerBody.velocity.set(dx * 0.5, dy * 0.5, dz * 0.5);
+            
+            playerMesh.material.transparent = true;
+            playerMesh.material.opacity = Math.max(0, playerMesh.material.opacity - delta * 0.5); 
         }
 
-        // Extended Game Over fall sequence back up to 1.5 seconds so you can see the fall
-        if (gameOverTimer > 1.5) {
+        if (gameOverTimer > 0.8) {
             latestScoreText.innerHTML = `Latest Score: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
             
             pauseBtn.style.display = 'none';
@@ -904,28 +1082,22 @@ function animate() {
             }
         }
 
-        // --- GATE ANIMATION & CLEANUP ---
         for (let i = gates.length - 1; i >= 0; i--) {
             let g = gates[i];
             let distToGate = playerBody.position.z - g.zPos; 
 
-            // Trigger door opening when player is 80 meters away
             if (distToGate < 80 && distToGate > -20) {
                 g.opened = true;
             }
 
-            // Trigger STAGE X Text only if NOT game over!
             if (!g.passed && distToGate < 0 && gameState !== 'GAMEOVER') { 
                 g.passed = true;
                 gatesPassed++;
                 showStageText(gatesPassed);
             }
 
-            // Smooth opening animation
             if (g.opened) {
-                // Left door swings inwards to -90 degrees
                 g.leftPivot.rotation.y = THREE.MathUtils.lerp(g.leftPivot.rotation.y, -Math.PI / 2, 3 * delta);
-                // Right door swings inwards to 90 degrees
                 g.rightPivot.rotation.y = THREE.MathUtils.lerp(g.rightPivot.rotation.y, Math.PI / 2, 3 * delta);
             }
 
