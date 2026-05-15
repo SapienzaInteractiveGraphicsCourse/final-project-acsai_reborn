@@ -96,6 +96,7 @@ let currentForm = 'beachBall';
 let isSinking = false;
 let sinkTarget = null;
 let isPaused = false; 
+let playerName = "Player";
 
 let survivalTime = 0;
 let pinsSmashed = 0;
@@ -113,13 +114,12 @@ let activePowerUp = null;
 let powerUpTimer = 0;
 const powerups = [];
 
-// CHANGED: Wind Particles Array Setup
 const windParticles = []; 
 const windGeo = new THREE.BoxGeometry(0.1, 0.1, 1.5);
 const windMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.5});
 
 // High Score Variables
-let highScore = { score: 0, time: 0, distance: 0, pins: 0 };
+let highScore = { score: 0, time: 0, distance: 0, pins: 0, player: "" };
 let currentScore = 0;
 let hasReachedNewHighScore = false;
 
@@ -194,6 +194,25 @@ scoreHud.style.fontFamily = 'sans-serif'; scoreHud.style.fontSize = '18px';
 scoreHud.style.fontWeight = 'bold'; scoreHud.style.textAlign = 'right'; scoreHud.style.display = 'none';
 scoreHud.style.zIndex = '500';
 document.body.appendChild(scoreHud);
+
+// --- POWER-UP TIMER UI ---
+const timerUI = document.createElement('div');
+timerUI.style.position = 'absolute';
+timerUI.style.top = '20px';
+timerUI.style.left = '50%';
+timerUI.style.transform = 'translateX(-50%)';
+timerUI.style.display = 'none';
+timerUI.style.alignItems = 'center';
+timerUI.style.justifyContent = 'center';
+timerUI.style.zIndex = '1000';
+timerUI.innerHTML = `
+    <svg width="60" height="60" style="transform: rotate(-90deg);">
+        <circle cx="30" cy="30" r="25" fill="none" stroke="rgba(0,0,0,0.5)" stroke-width="6" />
+        <circle id="timer-circle" cx="30" cy="30" r="25" fill="none" stroke="#00ff00" stroke-width="6" stroke-dasharray="157" stroke-dashoffset="0" style="transition: stroke-dashoffset 0.1s linear;" />
+    </svg>
+    <div id="timer-text" style="position:absolute; font-family:'Arial Black', sans-serif; font-size:24px; font-weight:900; text-shadow:0px 0px 10px rgba(0,0,0,0.8); color:#00ff00;">10</div>
+`;
+document.body.appendChild(timerUI);
 
 
 // ==========================================
@@ -322,7 +341,7 @@ resumeBtn.addEventListener('click', togglePause);
 abandonBtn.addEventListener('click', () => {
     togglePause();
     gameState = 'GAMEOVER';
-    gameOverTimer = 999; // force immediate return to menu
+    gameOverTimer = 999; 
 });
 
 function updatePauseStats() {
@@ -349,6 +368,31 @@ function togglePause() {
         pauseOverlay.style.display = 'none';
     }
 }
+
+// --- PLAYER NAME INPUT ---
+const playerNameInput = document.createElement('input');
+playerNameInput.type = 'text';
+playerNameInput.placeholder = 'Enter Player Name';
+playerNameInput.style.padding = "10px 20px";
+playerNameInput.style.fontSize = "1.2rem";
+playerNameInput.style.marginBottom = "20px";
+playerNameInput.style.borderRadius = "25px";
+playerNameInput.style.border = "2px solid #00ccff";
+playerNameInput.style.textAlign = "center";
+playerNameInput.style.fontFamily = "sans-serif";
+playerNameInput.style.fontWeight = "bold";
+playerNameInput.style.background = "rgba(0,0,0,0.6)";
+playerNameInput.style.color = "#fff";
+
+// Hide input on Enter to confirm
+playerNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+        playerName = playerNameInput.value.trim() || 'Player';
+        playerNameInput.style.display = 'none';
+        playerNameInput.blur();
+    }
+});
+
 
 // --- MAIN MENU BUTTONS (3 ROWS LAYOUT) ---
 const howToPlayBtn = document.createElement('button');
@@ -409,10 +453,12 @@ startHintText.style.marginBottom = "20px";
 startHintText.style.opacity = "0.8";
 
 if (playBtn && playBtn.parentNode) {
+    playBtn.parentNode.insertBefore(playerNameInput, playBtn);
     playBtn.parentNode.insertBefore(startHintText, playBtn);
     playBtn.parentNode.insertBefore(howToPlayBtn, playBtn.nextSibling);
     howToPlayBtn.parentNode.insertBefore(row3Container, howToPlayBtn.nextSibling);
 } else {
+    mainMenu.appendChild(playerNameInput);
     mainMenu.appendChild(startHintText);
     mainMenu.appendChild(howToPlayBtn);
     mainMenu.appendChild(row3Container);
@@ -666,7 +712,7 @@ function showGameOverText() {
     gameOverText.style.transition = 'transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.2s ease-out';
     gameOverText.style.transform = 'translate(-50%, -50%) scale(1)';
     
-    // CHANGED: Game over sound volume significantly lowered
+    // Game over sound kept quiet
     playTone(150, 'sawtooth', 0.8, 0.04);
     setTimeout(() => playTone(100, 'sawtooth', 1.0, 0.04), 400);
 }
@@ -707,6 +753,10 @@ texObj.closeBtn.addEventListener('click', () => {
     
     materials.beachBall.color.setHex(beachVal);
     materials.beachBall.needsUpdate = true;
+    
+    // Instantly update giant ball on menu
+    giantBall.material.color.setHex(beachVal);
+    giantBall.material.needsUpdate = true;
 });
 
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
@@ -736,185 +786,6 @@ const splashMat = new THREE.MeshBasicMaterial({color: 0x88ccff, transparent: tru
 
 const physicsMaterials = { ground: new CANNON.Material('ground'), ball: new CANNON.Material('ball'), obstacle: new CANNON.Material('obstacle') };
 world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, physicsMaterials.ball, { friction: 0.0, restitution: 0.2 }));
-
-// --- CHANGED: Power-Up Textures & Setup ---
-function createPuTex(emoji, bgColorStr) {
-    const c = document.createElement('canvas');
-    c.width = 256; c.height = 256;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = bgColorStr;
-    ctx.fillRect(0,0,256,256);
-    ctx.fillStyle = 'white';
-    ctx.font = '120px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(emoji, 128, 140);
-    return new THREE.CanvasTexture(c);
-}
-
-const greenPuMat = new THREE.MeshStandardMaterial({ map: createPuTex('💪', '#00ff00'), roughness: 0.4 });
-const purplePuMat = new THREE.MeshStandardMaterial({ map: createPuTex('🪽', '#aa00ff'), roughness: 0.4 });
-
-// --- CHANGED: Complex Animated Wings Object ---
-const wingsGroup = new THREE.Group();
-const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
-
-// Left Wing
-const leftShoulder = new THREE.Group();
-leftShoulder.position.set(-0.8, 0, 0); 
-const leftUpperArm = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.6), wingMat);
-leftUpperArm.position.set(-1, 0, 0); 
-leftUpperArm.castShadow = true;
-leftShoulder.add(leftUpperArm);
-
-const leftElbow = new THREE.Group();
-leftElbow.position.set(-2, 0, 0); 
-const leftLowerArm = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.8), wingMat);
-leftLowerArm.position.set(-1.25, 0, 0);
-leftLowerArm.castShadow = true;
-leftElbow.add(leftLowerArm);
-
-for(let i=0; i<3; i++) {
-    let feather = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 1.5), wingMat);
-    feather.position.set(-0.5 - i*0.5, -0.1, -0.5);
-    feather.rotation.y = -0.2;
-    leftLowerArm.add(feather.clone());
-    leftUpperArm.add(feather.clone());
-}
-leftShoulder.add(leftElbow);
-wingsGroup.add(leftShoulder);
-
-// Right Wing
-const rightShoulder = new THREE.Group();
-rightShoulder.position.set(0.8, 0, 0); 
-const rightUpperArm = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.6), wingMat);
-rightUpperArm.position.set(1, 0, 0);
-rightUpperArm.castShadow = true;
-rightShoulder.add(rightUpperArm);
-
-const rightElbow = new THREE.Group();
-rightElbow.position.set(2, 0, 0);
-const rightLowerArm = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.8), wingMat);
-rightLowerArm.position.set(1.25, 0, 0);
-rightLowerArm.castShadow = true;
-rightElbow.add(rightLowerArm);
-
-for(let i=0; i<3; i++) {
-    let feather = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 1.5), wingMat);
-    feather.position.set(0.5 + i*0.5, -0.1, -0.5);
-    feather.rotation.y = 0.2;
-    rightLowerArm.add(feather.clone());
-    rightUpperArm.add(feather.clone());
-}
-rightShoulder.add(rightElbow);
-wingsGroup.add(rightShoulder);
-
-scene.add(wingsGroup);
-wingsGroup.visible = false;
-
-// --- CHANGED: Complex Tiny Person Fairy Setup ---
-const fairyGroup = new THREE.Group();
-const fMat = new THREE.MeshStandardMaterial({ color: 0xccffcc, emissive: 0x22ff22, emissiveIntensity: 0.8 });
-
-const fHead = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), fMat);
-fHead.position.set(0, 0.6, 0);
-fairyGroup.add(fHead);
-
-const fBody = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.25, 0.6, 8), fMat);
-fBody.position.set(0, 0.2, 0);
-fairyGroup.add(fBody);
-
-const armGeo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
-const fLArm = new THREE.Mesh(armGeo, fMat);
-fLArm.position.set(-0.3, 0.3, 0);
-fLArm.rotation.z = 0.5;
-fairyGroup.add(fLArm);
-
-const fRArm = new THREE.Mesh(armGeo, fMat);
-fRArm.position.set(0.3, 0.3, 0);
-fRArm.rotation.z = -0.5;
-fairyGroup.add(fRArm);
-
-const legGeo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
-const fLLeg = new THREE.Mesh(legGeo, fMat);
-fLLeg.position.set(-0.1, -0.2, 0);
-fairyGroup.add(fLLeg);
-
-const fRLeg = new THREE.Mesh(legGeo, fMat);
-fRLeg.position.set(0.1, -0.2, 0);
-fairyGroup.add(fRLeg);
-
-const fWingGeo = new THREE.ConeGeometry(0.2, 0.6, 3);
-const fWingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
-const fLWing = new THREE.Mesh(fWingGeo, fWingMat);
-fLWing.position.set(-0.2, 0.4, -0.2);
-fLWing.rotation.x = -Math.PI / 4;
-fLWing.rotation.z = -Math.PI / 4;
-fairyGroup.add(fLWing);
-
-const fRWing = new THREE.Mesh(fWingGeo, fWingMat);
-fRWing.position.set(0.2, 0.4, -0.2);
-fRWing.rotation.x = -Math.PI / 4;
-fRWing.rotation.z = Math.PI / 4;
-fairyGroup.add(fRWing);
-
-const fairyOrbit = new THREE.Group();
-fairyGroup.position.set(2.5, 0, 0); 
-fairyOrbit.add(fairyGroup);
-scene.add(fairyOrbit);
-fairyOrbit.visible = false;
-
-
-// ==========================================
-// 4. MENU BACKGROUND
-// ==========================================
-const menuScene = new THREE.Group();
-const giantBall = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32), materials.beachBall);
-giantBall.position.set(0, 3, 0); giantBall.castShadow = true; menuScene.add(giantBall);
-
-const pinPoints = [new THREE.Vector2(0, 0), new THREE.Vector2(0.4, 0.2), new THREE.Vector2(0.4, 0.8), new THREE.Vector2(0.15, 1.5), new THREE.Vector2(0.25, 1.8), new THREE.Vector2(0, 2.0)];
-const pinGeo = new THREE.LatheGeometry(pinPoints, 16); pinGeo.translate(0, -1, 0); 
-const pinMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 });
-const pinShape = new CANNON.Cylinder(0.4, 0.4, 2.0, 8);
-
-const giantPin1 = new THREE.Mesh(pinGeo, pinMat); giantPin1.scale.set(2, 2, 2); giantPin1.position.set(-4, 2, -2); giantPin1.castShadow = true; menuScene.add(giantPin1);
-const giantPin2 = new THREE.Mesh(pinGeo, pinMat); giantPin2.scale.set(2, 2, 2); giantPin2.position.set(4, 2, -2); giantPin2.castShadow = true; menuScene.add(giantPin2);
-menuScene.position.set(0, 0, -15); scene.add(menuScene);
-
-// ==========================================
-// 5. THE PLAYER (BALL)
-// ==========================================
-let currentLane = 0; 
-let baseSpeed = -22; 
-let forwardSpeed = -22; 
-const playerRadius = 1; 
-
-const playerMesh = new THREE.Mesh(new THREE.SphereGeometry(playerRadius, 32, 32), materials.stone);
-playerMesh.castShadow = true; playerMesh.visible = false; 
-scene.add(playerMesh);
-
-const playerBody = new CANNON.Body({ mass: 25, shape: new CANNON.Sphere(playerRadius), position: new CANNON.Vec3(0, 5, 0), material: physicsMaterials.ball });
-playerBody.linearDamping = 0; playerBody.angularDamping = 0; 
-world.addBody(playerBody);
-
-playerBody.addEventListener('collide', (e) => {
-    if (gameState !== 'PLAYING') return;
-    if (e.body.isPin) {
-        if (currentForm === 'stone' || activePowerUp === 'invincible' || activePowerUp === 'flying') {
-            e.body.needsShatter = true;
-            // CHANGED: Boosted Sound
-            playTone(250 + Math.random()*50, 'triangle', 0.15, 0.4); 
-            setTimeout(() => playTone(150 + Math.random()*50, 'square', 0.15, 0.2), 30);
-        } else {
-            if (gameState !== 'GAMEOVER') {
-                gameState = 'GAMEOVER'; 
-                showGameOverText();
-                playerBody.velocity.set(0, 10, 15); 
-                UI_Status.innerHTML = "CRASH! Only the Stone ball smashes pins."; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
-            }
-        }
-    }
-});
 
 // ==========================================
 // 6. PROCEDURAL CHUNKS, GAPS & GATES
@@ -1017,7 +888,6 @@ function spawnStartingRunway() {
 function spawnNextChunk() {
     const gapChance = Math.min(0.25, 0.15 + (distanceTraveled / 10000));
     
-    // CHANGED: Prevent gap generation if flying
     let allowGap = activePowerUp !== 'flying';
     if (nextSpawnZ < -150 && Math.random() < gapChance && !wasGap && Math.abs(nextSpawnZ) % 300 !== 0 && nextSpawnZ > nextGateZ && allowGap) {
         wasGap = true; nextSpawnZ -= 30; return; 
@@ -1040,7 +910,6 @@ function spawnNextChunk() {
 
     const rand = Math.random();
     
-    // CHANGED: 8% chance to spawn Powerup instead of obstacles
     if (gatesPassed >= 1 && rand < 0.08) {
         const isFlying = Math.random() < 0.5;
         const puMesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), isFlying ? purplePuMat : greenPuMat);
@@ -1087,11 +956,253 @@ function spawnNextChunk() {
     nextSpawnZ -= 30;
 }
 
+// --- Power-Up Textures & Setup ---
+function createPuTex(emoji, bgColorStr) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = bgColorStr;
+    ctx.fillRect(0,0,256,256);
+    ctx.fillStyle = 'white';
+    ctx.font = '120px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, 128, 140);
+    return new THREE.CanvasTexture(c);
+}
+
+const greenPuMat = new THREE.MeshStandardMaterial({ map: createPuTex('💪', '#00ff00'), roughness: 0.4 });
+const purplePuMat = new THREE.MeshStandardMaterial({ map: createPuTex('🪽', '#aa00ff'), roughness: 0.4 });
+
+const playerRadius = 1;
+
+// --- Outer Glow Aura Mesh ---
+const auraGeo = new THREE.SphereGeometry(playerRadius * 1.3, 32, 32);
+const auraMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
+const auraMesh = new THREE.Mesh(auraGeo, auraMat);
+scene.add(auraMesh);
+auraMesh.visible = false;
+
+// --- Complex Animated Wings Object ---
+const wingsGroup = new THREE.Group();
+const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+
+// Left Wing
+const leftShoulder = new THREE.Group();
+leftShoulder.position.set(-0.8, 0, 0); 
+const leftUpperArm = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.6), wingMat);
+leftUpperArm.position.set(-1, 0, 0); 
+leftUpperArm.castShadow = true;
+leftShoulder.add(leftUpperArm);
+
+const leftElbow = new THREE.Group();
+leftElbow.position.set(-2, 0, 0); 
+const leftLowerArm = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.8), wingMat);
+leftLowerArm.position.set(-1.25, 0, 0);
+leftLowerArm.castShadow = true;
+leftElbow.add(leftLowerArm);
+
+const leftWrist = new THREE.Group();
+leftWrist.position.set(-2.5, 0, 0); 
+const leftHandMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 0.03, 0.6), wingMat);
+leftHandMesh.position.set(-1, 0, 0);
+leftHandMesh.castShadow = true;
+leftWrist.add(leftHandMesh);
+leftElbow.add(leftWrist);
+
+for(let i=0; i<3; i++) {
+    let feather = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 1.5), wingMat);
+    feather.position.set(-0.5 - i*0.5, -0.1, -0.5);
+    feather.rotation.y = -0.2;
+    leftLowerArm.add(feather.clone());
+    leftUpperArm.add(feather.clone());
+    leftHandMesh.add(feather.clone());
+}
+leftShoulder.add(leftElbow);
+wingsGroup.add(leftShoulder);
+
+// Right Wing
+const rightShoulder = new THREE.Group();
+rightShoulder.position.set(0.8, 0, 0); 
+const rightUpperArm = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.6), wingMat);
+rightUpperArm.position.set(1, 0, 0);
+rightUpperArm.castShadow = true;
+rightShoulder.add(rightUpperArm);
+
+const rightElbow = new THREE.Group();
+rightElbow.position.set(2, 0, 0);
+const rightLowerArm = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.05, 0.8), wingMat);
+rightLowerArm.position.set(1.25, 0, 0);
+rightLowerArm.castShadow = true;
+rightElbow.add(rightLowerArm);
+
+const rightWrist = new THREE.Group();
+rightWrist.position.set(2.5, 0, 0); 
+const rightHandMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 0.03, 0.6), wingMat);
+rightHandMesh.position.set(1, 0, 0);
+rightHandMesh.castShadow = true;
+rightWrist.add(rightHandMesh);
+rightElbow.add(rightWrist);
+
+for(let i=0; i<3; i++) {
+    let feather = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.02, 1.5), wingMat);
+    feather.position.set(0.5 + i*0.5, -0.1, -0.5);
+    feather.rotation.y = 0.2;
+    rightLowerArm.add(feather.clone());
+    rightUpperArm.add(feather.clone());
+    rightHandMesh.add(feather.clone());
+}
+rightShoulder.add(rightElbow);
+wingsGroup.add(rightShoulder);
+
+scene.add(wingsGroup);
+wingsGroup.visible = false;
+
+// --- Complex Tiny Person Fairy Setup ---
+const fairyGroup = new THREE.Group();
+const fMat = new THREE.MeshStandardMaterial({ color: 0xccffcc, emissive: 0x22ff22, emissiveIntensity: 0.8 });
+
+const fHead = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), fMat);
+fHead.position.set(0, 0.6, 0);
+fairyGroup.add(fHead);
+
+const fBody = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.25, 0.6, 8), fMat);
+fBody.position.set(0, 0.2, 0);
+fairyGroup.add(fBody);
+
+const fLArmBase = new THREE.Group();
+fLArmBase.position.set(-0.15, 0.4, 0);
+const fLArmUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), fMat);
+fLArmUpper.position.set(-0.1, -0.1, 0);
+fLArmUpper.rotation.z = -0.5;
+fLArmBase.add(fLArmUpper);
+const fLElbow = new THREE.Group();
+fLElbow.position.set(-0.2, -0.2, 0);
+const fLArmLower = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), fMat);
+fLArmLower.position.set(0, -0.1, 0);
+fLElbow.add(fLArmLower);
+fLArmBase.add(fLElbow);
+fairyGroup.add(fLArmBase);
+
+const fRArmBase = new THREE.Group();
+fRArmBase.position.set(0.15, 0.4, 0);
+const fRArmUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), fMat);
+fRArmUpper.position.set(0.1, -0.1, 0);
+fRArmUpper.rotation.z = 0.5;
+fRArmBase.add(fRArmUpper);
+const fRElbow = new THREE.Group();
+fRElbow.position.set(0.2, -0.2, 0);
+const fRArmLower = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.2), fMat);
+fRArmLower.position.set(0, -0.1, 0);
+fRElbow.add(fRArmLower);
+fRArmBase.add(fRElbow);
+fairyGroup.add(fRArmBase);
+
+const legGeo = new THREE.BoxGeometry(0.1, 0.4, 0.1);
+const fLLeg = new THREE.Mesh(legGeo, fMat);
+fLLeg.position.set(-0.1, -0.2, 0);
+fairyGroup.add(fLLeg);
+
+const fRLeg = new THREE.Mesh(legGeo, fMat);
+fRLeg.position.set(0.1, -0.2, 0);
+fairyGroup.add(fRLeg);
+
+const fWingGeo = new THREE.ConeGeometry(0.2, 0.6, 3);
+const fWingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+const fLWing = new THREE.Mesh(fWingGeo, fWingMat);
+fLWing.position.set(-0.2, 0.4, -0.2);
+fLWing.rotation.x = -Math.PI / 4;
+fLWing.rotation.z = -Math.PI / 4;
+fairyGroup.add(fLWing);
+
+const fRWing = new THREE.Mesh(fWingGeo, fWingMat);
+fRWing.position.set(0.2, 0.4, -0.2);
+fRWing.rotation.x = -Math.PI / 4;
+fRWing.rotation.z = Math.PI / 4;
+fairyGroup.add(fRWing);
+
+const fairyOrbit = new THREE.Group();
+fairyGroup.position.set(2.5, 0, 0); 
+fairyOrbit.add(fairyGroup);
+scene.add(fairyOrbit);
+fairyOrbit.visible = false;
+
+
+// ==========================================
+// 4. MENU BACKGROUND
+// ==========================================
+const menuScene = new THREE.Group();
+const giantBall = new THREE.Mesh(new THREE.SphereGeometry(3, 32, 32), materials.beachBall);
+giantBall.position.set(0, 3, 0); giantBall.castShadow = true; menuScene.add(giantBall);
+
+const pinPoints = [new THREE.Vector2(0, 0), new THREE.Vector2(0.4, 0.2), new THREE.Vector2(0.4, 0.8), new THREE.Vector2(0.15, 1.5), new THREE.Vector2(0.25, 1.8), new THREE.Vector2(0, 2.0)];
+const pinGeo = new THREE.LatheGeometry(pinPoints, 16); pinGeo.translate(0, -1, 0); 
+const pinMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 });
+const pinShape = new CANNON.Cylinder(0.4, 0.4, 2.0, 8);
+
+const giantPin1 = new THREE.Mesh(pinGeo, pinMat); giantPin1.scale.set(2, 2, 2); giantPin1.position.set(-4, 2, -2); giantPin1.castShadow = true; menuScene.add(giantPin1);
+const giantPin2 = new THREE.Mesh(pinGeo, pinMat); giantPin2.scale.set(2, 2, 2); giantPin2.position.set(4, 2, -2); giantPin2.castShadow = true; menuScene.add(giantPin2);
+menuScene.position.set(0, 0, -15); scene.add(menuScene);
+
+// ==========================================
+// 5. THE PLAYER (BALL)
+// ==========================================
+let currentLane = 0; 
+let baseSpeed = -22; 
+let forwardSpeed = -22; 
+
+const playerMesh = new THREE.Mesh(new THREE.SphereGeometry(playerRadius, 32, 32), materials.stone);
+playerMesh.castShadow = true; playerMesh.visible = false; 
+scene.add(playerMesh);
+
+const playerBody = new CANNON.Body({ mass: 25, shape: new CANNON.Sphere(playerRadius), position: new CANNON.Vec3(0, 5, 0), material: physicsMaterials.ball });
+playerBody.linearDamping = 0; playerBody.angularDamping = 0; 
+world.addBody(playerBody);
+
+playerBody.addEventListener('collide', (e) => {
+    if (gameState !== 'PLAYING') return;
+    if (e.body.isPin) {
+        if (currentForm === 'stone' || activePowerUp === 'invincible' || activePowerUp === 'flying') {
+            e.body.needsShatter = true;
+            
+            // CHANGED: Instantly nullify the pin's physical properties to prevent any bounce force
+            e.body.collisionFilterGroup = 0;
+            e.body.collisionFilterMask = 0;
+            if (activePowerUp) {
+                e.body.collisionResponse = false; 
+                if (currentForm === 'beachBall') {
+                    playerBody.velocity.y = Math.min(playerBody.velocity.y, 0); // Stops upward bouncing entirely
+                }
+            }
+            
+            playTone(250 + Math.random()*50, 'triangle', 0.15, 0.4); 
+            setTimeout(() => playTone(150 + Math.random()*50, 'square', 0.15, 0.2), 30);
+        } else {
+            if (gameState !== 'GAMEOVER') {
+                gameState = 'GAMEOVER'; 
+                showGameOverText();
+                playerBody.velocity.set(0, 10, 15); 
+                UI_Status.innerHTML = "CRASH! Only the Stone ball smashes pins."; UI_Status.style.color = "#ff3333"; scoreHud.style.color = "#ff3333";
+            }
+        }
+    }
+});
+
 function activatePowerUp(type) {
     activePowerUp = type;
-    powerUpTimer = 8.0;
     
-    // CHANGED: Boosted Pickup sound
+    if (type === 'invincible') {
+        powerUpTimer = 10.0;
+        document.getElementById('timer-circle').style.stroke = '#00ff00';
+        document.getElementById('timer-text').style.color = '#00ff00';
+        document.getElementById('timer-text').style.textShadow = '0px 0px 10px rgba(0,255,0,0.8)';
+    } else if (type === 'flying') {
+        powerUpTimer = 8.0;
+        document.getElementById('timer-circle').style.stroke = '#aa00ff';
+        document.getElementById('timer-text').style.color = '#aa00ff';
+        document.getElementById('timer-text').style.textShadow = '0px 0px 10px rgba(170,0,255,0.8)';
+    }
+    
     playTone(440, 'square', 0.1, 0.4);
     setTimeout(() => playTone(554, 'square', 0.1, 0.4), 100);
     setTimeout(() => playTone(659, 'square', 0.1, 0.4), 200);
@@ -1099,11 +1210,10 @@ function activatePowerUp(type) {
     
     if (type === 'invincible') {
         wingsGroup.visible = false;
-        materials.stone.emissive.setHex(0x003300);
-        materials.beachBall.emissive.setHex(0x003300);
-        fairyOrbit.visible = true; // CHANGED: Show Fairy
+        auraMesh.material.color.setHex(0x00ff00);
+        auraMesh.visible = true;
+        fairyOrbit.visible = true;
     } else if (type === 'flying') {
-        // CHANGED: Fill all gaps currently generated ahead so player doesn't fall when flight ends
         let checkZ = Math.floor(playerBody.position.z / 30) * 30;
         while (checkZ > nextSpawnZ) {
             let hasFloor = trackTiles.some(t => Math.abs(t.mesh.position.z - checkZ) < 5);
@@ -1116,10 +1226,10 @@ function activatePowerUp(type) {
             checkZ -= 30;
         }
 
-        materials.stone.emissive.setHex(0x000000);
-        materials.beachBall.emissive.setHex(0x000000); 
+        auraMesh.material.color.setHex(0xaa00ff);
+        auraMesh.visible = true;
         wingsGroup.visible = true;
-        fairyOrbit.visible = false; // CHANGED: Hide Fairy
+        fairyOrbit.visible = false; 
         playerBody.velocity.y = 12; // take off
     }
 }
@@ -1128,6 +1238,9 @@ let isTransitioning = false;
 function triggerPlayAnimation() {
     if (isTransitioning) return;
     isTransitioning = true;
+    
+    // Grab name
+    playerName = playerNameInput.value.trim() || 'Player';
     
     if (audioCtx && audioCtx.state === 'suspended') {
         audioCtx.resume();
@@ -1176,6 +1289,10 @@ function triggerPlayAnimation() {
         startHintText.style.transition = 'opacity 0.3s ease';
         startHintText.style.opacity = '0';
     }
+    if (playerNameInput) {
+        playerNameInput.style.transition = 'opacity 0.3s ease';
+        playerNameInput.style.opacity = '0';
+    }
     
     setTimeout(() => {
         if (playBtn) {
@@ -1202,6 +1319,10 @@ function triggerPlayAnimation() {
             startHintText.style.transition = 'none';
             startHintText.style.opacity = '0.8';
         }
+        if (playerNameInput) {
+            playerNameInput.style.transition = 'none';
+            playerNameInput.style.opacity = '1';
+        }
         resetGame();
         isTransitioning = false;
     }, 1200);
@@ -1223,12 +1344,12 @@ function resetGame() {
     activePowerUp = null;
     powerUpTimer = 0;
     
-    // CHANGED: Reset emissive colors cleanly
     materials.stone.emissive.setHex(0x000000);
     materials.beachBall.emissive.setHex(0x000000);
     
+    auraMesh.visible = false;
     wingsGroup.visible = false;
-    fairyOrbit.visible = false;
+    fairyOrbit.visible = false; 
     
     trackTiles.forEach(t => { scene.remove(t.mesh); world.removeBody(t.body); }); trackTiles.length = 0;
     obstacles.forEach(o => { scene.remove(o.mesh); world.removeBody(o.body); }); obstacles.length = 0;
@@ -1279,6 +1400,7 @@ spawnStartingRunway();
 
 window.addEventListener('mousedown', (e) => {
     if (e.target.tagName.toLowerCase() === 'button') return;
+    if (e.target.tagName.toLowerCase() === 'input') return;
     if (e.target.closest('#pause-overlay')) return;
     
     if (gameState === 'PLAYING') {
@@ -1292,7 +1414,7 @@ window.addEventListener('keydown', (e) => {
     }
     
     if (gameState === 'MENU' && (e.key === ' ' || e.key === 'Enter')) {
-        if (isModalOpen) return;
+        if (isModalOpen || document.activeElement === playerNameInput) return;
         triggerPlayAnimation();
         return;
     }
@@ -1319,10 +1441,6 @@ window.addEventListener('keydown', (e) => {
             UI_Status.innerText = "Current Form: Beach Ball (Floaty)"; 
             UI_Status.style.color = "#33ccff"; 
             
-            // Retain invincibility glow if active
-            if (activePowerUp === 'invincible') {
-                materials.beachBall.emissive.setHex(0x003300);
-            }
         } else {
             currentForm = 'stone'; 
             playerMesh.material = materials.stone; 
@@ -1332,10 +1450,6 @@ window.addEventListener('keydown', (e) => {
             UI_Status.innerText = "Current Form: Stone (Heavy)"; 
             UI_Status.style.color = "#aaaaaa"; 
             
-            // Retain invincibility glow if active
-            if (activePowerUp === 'invincible') {
-                materials.stone.emissive.setHex(0x003300);
-            }
         }
     }
 });
@@ -1375,37 +1489,38 @@ function animate() {
         // Update powerups logic
         if (activePowerUp) {
             powerUpTimer -= delta;
+            
+            // UI Timer updates
+            timerUI.style.display = 'flex';
+            const maxTime = activePowerUp === 'invincible' ? 10.0 : 8.0;
+            const pct = Math.max(0, powerUpTimer / maxTime);
+            document.getElementById('timer-circle').style.strokeDashoffset = 157 - (157 * pct);
+            document.getElementById('timer-text').innerText = Math.ceil(powerUpTimer);
+            
             if (powerUpTimer <= 0) {
                 if (activePowerUp === 'invincible') {
-                    materials.stone.emissive.setHex(0x000000);
-                    materials.beachBall.emissive.setHex(0x000000);
+                    auraMesh.visible = false;
                     fairyOrbit.visible = false;
                 } else if (activePowerUp === 'flying') {
+                    auraMesh.visible = false;
                     wingsGroup.visible = false;
                 }
                 activePowerUp = null;
                 playTone(300, 'sine', 0.2, 0.3); // deactivate sound
             } else {
+                auraMesh.position.copy(playerBody.position);
+                
                 if (activePowerUp === 'invincible') {
-                    const emInt = 0.3 + Math.sin(gameElapsedTime * 10) * 0.1;
-                    if (currentForm === 'stone') {
-                        materials.stone.emissiveIntensity = emInt;
-                    } else {
-                        materials.beachBall.emissiveIntensity = emInt;
-                    }
-                    
                     fairyOrbit.visible = true;
                     fairyOrbit.position.copy(playerMesh.position);
-                    fairyOrbit.rotation.y = gameElapsedTime * 4; 
+                    fairyOrbit.rotation.y = gameElapsedTime * 2; // slow orbit
+                    fairyGroup.position.y = Math.sin(gameElapsedTime * 3) * 0.4; 
                     
-                    fairyGroup.position.y = Math.sin(gameElapsedTime * 8) * 0.5; 
-                    
-                    const ft = gameElapsedTime * 20;
-                    fLWing.rotation.y = Math.sin(ft) * 0.5;
-                    fRWing.rotation.y = -Math.sin(ft) * 0.5;
-                    
-                    fLLeg.rotation.x = Math.sin(gameElapsedTime * 10) * 0.2;
-                    fRLeg.rotation.x = -Math.sin(gameElapsedTime * 10) * 0.2;
+                    // Complex Fairy Animation
+                    fLArmBase.rotation.x = Math.sin(gameElapsedTime * 5) * 0.5;
+                    fLElbow.rotation.x = Math.sin(gameElapsedTime * 5 - 1) * 0.5;
+                    fRArmBase.rotation.x = Math.sin(gameElapsedTime * 5 + Math.PI) * 0.5;
+                    fRElbow.rotation.x = Math.sin(gameElapsedTime * 5 + Math.PI - 1) * 0.5;
                 }
                 if (activePowerUp === 'flying') {
                     playerBody.position.y = THREE.MathUtils.lerp(playerBody.position.y, 8, 4 * delta);
@@ -1413,10 +1528,14 @@ function animate() {
                     
                     wingsGroup.position.copy(playerBody.position);
                     const t = gameElapsedTime * 12;
+                    // CHANGED: 3 segment wing animation
                     leftShoulder.rotation.z = Math.sin(t) * 0.5 + 0.2;
-                    leftElbow.rotation.z = Math.sin(t - 0.5) * 0.6 + 0.1;
+                    leftElbow.rotation.z = Math.sin(t - 0.5) * 0.5 + 0.1;
+                    leftWrist.rotation.z = Math.sin(t - 1.0) * 0.5 + 0.1;
+                    
                     rightShoulder.rotation.z = -Math.sin(t) * 0.5 - 0.2;
-                    rightElbow.rotation.z = -Math.sin(t - 0.5) * 0.6 - 0.1;
+                    rightElbow.rotation.z = -Math.sin(t - 0.5) * 0.5 - 0.1;
+                    rightWrist.rotation.z = -Math.sin(t - 1.0) * 0.5 - 0.1;
 
                     // Wind Particles logic
                     if (Math.random() < 0.6) {
@@ -1428,8 +1547,8 @@ function animate() {
                 }
             }
         } else {
-            materials.stone.emissive.setHex(0x000000);
-            materials.beachBall.emissive.setHex(0x000000);
+            timerUI.style.display = 'none';
+            auraMesh.visible = false;
             fairyOrbit.visible = false;
         }
 
@@ -1450,7 +1569,7 @@ function animate() {
         }
         
         let speedText = speedMultiplier > 1.1 ? `<br><span style="color:#808080">x${speedMultiplier.toFixed(1)} SPEED!</span>` : "";
-        scoreHud.innerHTML = `Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
+        scoreHud.innerHTML = `Player: <span style="color:#ffeb3b">${playerName}</span><br>Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
     }
 
     // ------------------------------------------
@@ -1594,18 +1713,20 @@ function animate() {
 
         if (gameOverTimer > 1.5) {
             if (currentScore > highScore.score) {
-                highScore = { score: currentScore, time: survivalTime, distance: distanceTraveled, pins: pinsSmashed };
+                highScore = { score: currentScore, time: survivalTime, distance: distanceTraveled, pins: pinsSmashed, player: playerName };
             }
             
             const badgeHtml = hasReachedNewHighScore ? `<span class="new-score-badge">NEW!</span>` : "";
+            const hsName = highScore.player ? ` (${highScore.player})` : "";
             
-            highScoreMenuText.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}</span> | <span style="color:#00e676">${highScore.time.toFixed(1)}s</span> | <span style="color:#00e676">${highScore.distance}m</span> | <span style="color:#ffcc00">${highScore.pins}</span> Pins ${badgeHtml}`;
+            highScoreMenuText.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}${hsName}</span> | <span style="color:#00e676">${highScore.time.toFixed(1)}s</span> | <span style="color:#00e676">${highScore.distance}m</span> | <span style="color:#ffcc00">${highScore.pins}</span> Pins ${badgeHtml}`;
             
             latestScoreText.innerHTML = `Latest Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span> | <span style="color:#00e676">${survivalTime.toFixed(1)}s</span> | <span style="color:#00e676">${distanceTraveled}m</span> | <span style="color:#ffcc00">${pinsSmashed}</span> Pins`;
             
             creditLeft.style.display = 'block';
             creditRight.style.display = 'block';
             hideGameOverText();
+            timerUI.style.display = 'none';
             
             materials.stone.emissive.setHex(0x000000);
             materials.beachBall.emissive.setHex(0x000000);
@@ -1624,6 +1745,8 @@ function animate() {
 
             uiHUD.style.display = 'none'; scoreHud.style.display = 'none'; mainMenu.style.display = 'flex';
             menuScene.visible = true; playerMesh.visible = false; gameState = 'MENU';
+            playerNameInput.style.display = 'block';
+            playerNameInput.style.opacity = '1';
         }
     }
 
