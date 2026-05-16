@@ -910,7 +910,7 @@ function spawnNextChunk() {
 
     const rand = Math.random();
     
-    if (gatesPassed >= 1 && rand < 0.08) {
+    if (gatesPassed >= 1 && rand < 0.2) {
         const isFlying = Math.random() < 0.5;
         const puMesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), isFlying ? purplePuMat : greenPuMat);
         const puLane = Math.floor(Math.random() * 3) - 1; 
@@ -1165,16 +1165,26 @@ playerBody.addEventListener('collide', (e) => {
         if (currentForm === 'stone' || activePowerUp === 'invincible' || activePowerUp === 'flying') {
             e.body.needsShatter = true;
             
-            // CHANGED: Instantly nullify the pin's physical properties to prevent any bounce force
+            e.body.collisionResponse = false;
+
             e.body.collisionFilterGroup = 0;
             e.body.collisionFilterMask = 0;
             if (activePowerUp) {
-                e.body.collisionResponse = false; 
+                e.body.collisionResponse = false;
+
                 if (currentForm === 'beachBall') {
-                    playerBody.velocity.y = Math.min(playerBody.velocity.y, 0); // Stops upward bouncing entirely
+                    playerBody.mass = 20;
+                    playerBody.updateMassProperties();
+                    playerBody.material.restitution = 0;
+
+                    // Completely cancel the collision impulse
+                    playerBody.velocity.y = 0;
+                    playerBody.angularVelocity.set(0, 0, 0);
+
+                    // Push slightly forward so the ball keeps smashing through
+                    playerBody.position.z -= 0.05;
                 }
             }
-            
             playTone(250 + Math.random()*50, 'triangle', 0.15, 0.4); 
             setTimeout(() => playTone(150 + Math.random()*50, 'square', 0.15, 0.2), 30);
         } else {
