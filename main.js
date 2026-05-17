@@ -10,7 +10,7 @@ const scene = new THREE.Scene();
 const dayColor = new THREE.Color(0x87CEEB);
 const nightColor = new THREE.Color(0x000011);
 scene.background = dayColor.clone(); 
-scene.fog = new THREE.Fog(scene.background, 50, 400);
+scene.fog = new THREE.Fog(scene.background, 100, 500);
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 600);
 
@@ -89,7 +89,7 @@ for (let i = 0; i < 150; i++) {
 scene.add(cloudsGroup);
 
 // ==========================================
-// 3. TEXTURES, UI & GAME STATE
+// 3. TEXTURES, UI, STAGES & GAME STATE
 // ==========================================
 let gameState = 'MENU'; 
 let currentForm = 'beachBall'; 
@@ -117,6 +117,10 @@ const powerups = [];
 const windParticles = []; 
 const windGeo = new THREE.BoxGeometry(0.1, 0.1, 1.5);
 const windMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.5});
+
+// Floor Particles
+const floorParticles = [];
+const fpGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
 
 // High Score Variables
 let highScore = { score: 0, time: 0, distance: 0, pins: 0, player: "" };
@@ -262,35 +266,48 @@ function playTone(freq, type, duration, vol=0.2) {
     osc.stop(t + duration);
 }
 
-// Background Music Loop
+// Background Music Loop (Smooth Crossfade handling inside animate block below)
 let bgmNoteIdx = 0;
-const bgmNotes = [
-    261.63, 329.63, 392.00, 523.25, 392.00, 329.63, 261.63, 392.00, // C major
-    220.00, 261.63, 329.63, 440.00, 329.63, 261.63, 220.00, 329.63, // A minor
-    174.61, 220.00, 261.63, 349.23, 261.63, 220.00, 174.61, 261.63, // F major
-    196.00, 246.94, 293.66, 392.00, 293.66, 246.94, 196.00, 293.66  // G major
-];
 setInterval(() => {
     if (!musicEnabled || isPaused || gameState !== 'PLAYING') return;
     const ctx = getAudioCtx();
     if (ctx.state === 'suspended') return;
     
     const t = ctx.currentTime;
-    const freq = bgmNotes[bgmNoteIdx % bgmNotes.length];
+    let sOld = stagesInfo[oldStageIdx];
+    let sNew = stagesInfo[currentStageIdx];
     
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    let freqOld = sOld.notes[bgmNoteIdx % sOld.notes.length];
+    let freqNew = sNew.notes[bgmNoteIdx % sNew.notes.length];
     
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(freq, t);
+    let gainOld = (1.0 - transitionProgress) * 0.12;
+    let gainNew = transitionProgress * 0.12;
+
+    if (gainOld > 0.005) {
+        let oscOld = ctx.createOscillator();
+        let gOld = ctx.createGain();
+        oscOld.type = sOld.wave;
+        oscOld.frequency.setValueAtTime(freqOld, t);
+        gOld.gain.setValueAtTime(gainOld, t);
+        gOld.gain.linearRampToValueAtTime(0.01, t + 0.3);
+        oscOld.connect(gOld);
+        gOld.connect(ctx.destination);
+        oscOld.start(t);
+        oscOld.stop(t + 0.3);
+    }
     
-    gain.gain.setValueAtTime(0.12, t); 
-    gain.gain.linearRampToValueAtTime(0.01, t + 0.3);
-    
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.3);
+    if (gainNew > 0.005) {
+        let oscNew = ctx.createOscillator();
+        let gNew = ctx.createGain();
+        oscNew.type = sNew.wave;
+        oscNew.frequency.setValueAtTime(freqNew, t);
+        gNew.gain.setValueAtTime(gainNew, t);
+        gNew.gain.linearRampToValueAtTime(0.01, t + 0.3);
+        oscNew.connect(gNew);
+        gNew.connect(ctx.destination);
+        oscNew.start(t);
+        oscNew.stop(t + 0.3);
+    }
     
     bgmNoteIdx++;
 }, 300);
@@ -618,6 +635,49 @@ creditRight.style.textShadow = '2px 2px 4px rgba(0,0,0,0.8)';
 creditRight.style.zIndex = '1000';
 document.body.appendChild(creditRight);
 
+// --- STAGES CONFIGURATION ---
+const stagesInfo = [
+    { name: 'Sky', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 0.9, pinCol: 0xffffff, puddleCol: 0x1ca3ec, gateFrame: 0x00ccff, gateDoor: 0xffaa00, gateHandle: 0xff00ff, trail: false, trailCol: 0x000000, emoji: '☁️', notes: [261.6, 329.6, 392.0, 523.3, 392.0, 329.6, 261.6, 392.0, 440.0, 392.0, 349.2, 329.6, 293.7, 329.6, 392.0, 523.3, 261.6, 329.6, 392.0, 659.3, 523.3, 392.0, 261.6, 392.0, 440.0, 523.3, 587.3, 523.3, 440.0, 392.0, 349.2, 293.7, 261.6, 329.6, 392.0, 523.3, 392.0, 329.6, 261.6, 329.6, 392.0, 440.0, 392.0, 329.6, 261.6, 196.0, 261.6, 329.6], wave: 'sine' },
+    { name: 'Neon City', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 0.7, pinCol: 0xffff00, puddleCol: 0xFF00EA, gateFrame: 0xff00ff, gateDoor: 0x00ffff, gateHandle: 0xffff00, trail: true, trailCol: 0x27EEF5, emoji: '🏙️', notes: [220.0, 261.6, 329.6, 220.0, 440.0, 329.6, 261.6, 329.6, 196.0, 246.9, 293.7, 196.0, 392.0, 293.7, 246.9, 293.7, 220.0, 261.6, 329.6, 440.0, 523.3, 440.0, 329.6, 261.6, 174.6, 220.0, 261.6, 349.2, 440.0, 349.2, 261.6, 220.0, 220.0, 261.6, 329.6, 220.0, 440.0, 329.6, 261.6, 329.6, 196.0, 246.9, 293.7, 196.0, 392.0, 293.7, 246.9, 293.7], wave: 'square' },
+    { name: 'Forest', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 0.95, pinCol: 0x5c4033, puddleCol: 0xa67b5b, gateFrame: 0x3d2817, gateDoor: 0x228b22, gateHandle: 0x8b4513, trail: true, trailCol: 0x3b7a33, emoji: '🌲', notes: [220.0, 261.6, 329.6, 440.0, 329.6, 261.6, 220.0, 261.6, 174.6, 220.0, 261.6, 349.2, 261.6, 220.0, 174.6, 261.6, 220.0, 329.6, 440.0, 523.3, 440.0, 329.6, 220.0, 329.6, 196.0, 293.7, 392.0, 440.0, 392.0, 293.7, 196.0, 293.7, 220.0, 261.6, 329.6, 440.0, 329.6, 261.6, 220.0, 261.6, 174.6, 220.0, 261.6, 349.2, 261.6, 220.0, 174.6, 261.6], wave: 'sine' },
+    { name: 'Snow', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 0.8, pinCol: 0x00bfff, puddleCol: 0xaaddff, gateFrame: 0xffffff, gateDoor: 0x88ccff, gateHandle: 0x0000ff, trail: true, trailCol: 0xeeeeee, emoji: '⛄', notes: [392.0, 440.0, 523.3, 587.3, 659.3, 587.3, 523.3, 440.0, 392.0, 329.6, 392.0, 440.0, 523.3, 440.0, 392.0, 329.6, 392.0, 523.3, 783.9, 523.3, 392.0, 329.6, 261.6, 329.6, 349.2, 440.0, 523.3, 440.0, 349.2, 261.6, 196.0, 261.6, 392.0, 329.6, 261.6, 196.0, 164.8, 196.0, 261.6, 329.6, 261.6, 196.0, 164.8, 146.8, 130.8, 146.8, 164.8, 196.0], wave: 'triangle' },
+    { name: 'Volcano', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 0.7, pinCol: 0x595959, puddleCol: 0x6E0000, gateFrame: 0x111111, gateDoor: 0xff3300, gateHandle: 0xffff00, trail: true, trailCol: 0xff3300, emoji: '🌋', notes: [130.8, 138.6, 164.8, 174.6, 196.0, 174.6, 164.8, 138.6, 130.8, 196.0, 174.6, 164.8, 138.6, 164.8, 174.6, 196.0, 130.8, 164.8, 196.0, 261.6, 196.0, 164.8, 130.8, 164.8, 138.6, 174.6, 207.65, 277.18, 207.65, 174.6, 138.6, 174.6, 130.8, 138.6, 164.8, 174.6, 196.0, 174.6, 164.8, 138.6, 146.8, 155.6, 174.6, 185.0, 220.0, 185.0, 155.6, 146.8], wave: 'sawtooth' },
+    { name: 'Desert', bgDay: 0x87CEEB, bgNight: 0x000011, floorCol: 0xffffff, floorRough: 1.0, pinCol: 0x2e8b57, puddleCol: 0xc2b280, gateFrame: 0xEDC9Af, gateDoor: 0x8b4513, gateHandle: 0x000000, trail: true, trailCol: 0xEDC9Af, emoji: '🌵', notes: [146.8, 155.6, 185.0, 220.0, 185.0, 155.6, 146.8, 220.0, 293.7, 220.0, 185.0, 155.6, 146.8, 155.6, 185.0, 220.0, 146.8, 220.0, 293.7, 311.1, 293.7, 220.0, 185.0, 155.6, 130.8, 196.0, 261.6, 311.1, 261.6, 196.0, 155.6, 146.8, 146.8, 155.6, 185.0, 220.0, 185.0, 155.6, 146.8, 220.0, 246.9, 293.7, 329.6, 293.7, 246.9, 220.0, 196.0, 261.6], wave: 'triangle' }
+];
+
+let currentStageIdx = 0;
+let trackStageIdx = 0;
+let oldStageIdx = 0;
+let transitionProgress = 1.0;
+
+function startStageTransition() {
+    oldStageIdx = currentStageIdx;
+    currentStageIdx = (currentStageIdx + 1) % stagesInfo.length;
+    transitionProgress = 0.0;
+}
+
+// Helper to draw emojis onto CanvasTextures for the gates
+function createDoorTex(emoji, bgColorHex) {
+    const c = document.createElement('canvas');
+    c.width = 256; c.height = 512;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#' + bgColorHex.toString(16).padStart(6, '0');
+    ctx.fillRect(0,0,256,512);
+    ctx.fillStyle = 'white';
+    ctx.font = '120px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, 128, 256);
+    return new THREE.CanvasTexture(c);
+}
+
+// Stage Material Pools
+const stageMats = stagesInfo.map(s => ({
+    pin: new THREE.MeshStandardMaterial({ color: s.pinCol, roughness: 0.4 }),
+    puddle: new THREE.MeshBasicMaterial({ color: s.puddleCol, transparent: true, opacity: 0.85 }),
+    splash: new THREE.MeshBasicMaterial({ color: s.puddleCol, transparent: true, opacity: 0.8 })
+}));
+
 // --- STAGE ANIMATION UI ---
 const stageText = document.createElement('div');
 stageText.style.position = 'absolute';
@@ -635,8 +695,8 @@ stageText.style.zIndex = '1000';
 stageText.style.textAlign = 'center';
 document.body.appendChild(stageText);
 
-function showStageText(num) {
-    stageText.innerText = `STAGE ${num}`;
+function showStageText(num, nameStr) {
+    stageText.innerHTML = `STAGE ${num}<br><span style="font-size: 0.4em;">${nameStr}</span>`;
     stageText.style.transition = 'none';
     stageText.style.transform = 'translate(-50%, -50%) scale(0.1)';
     stageText.style.opacity = '1';
@@ -726,15 +786,26 @@ const textureLoader = new THREE.TextureLoader();
 const stoneTexture = textureLoader.load('textures/bricks_color.png');
 stoneTexture.colorSpace = THREE.SRGBColorSpace; 
 
-const floorTexture = textureLoader.load('textures/floor.jpg');
-floorTexture.colorSpace = THREE.SRGBColorSpace;
-floorTexture.wrapS = THREE.RepeatWrapping; floorTexture.wrapT = THREE.RepeatWrapping;
-floorTexture.repeat.set(2, 5); 
+// Dynamic Floor Textures based on stage
+const floorTextures = stagesInfo.map(stage => {
+    let name = stage.name.toLowerCase().replace(/ /g, '_');
+    let tex = textureLoader.load(`textures/${name}_floor.jpg`);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping; 
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 5); 
+    return tex;
+});
 
-const startingFloorTexture = textureLoader.load('textures/floor.jpg');
-startingFloorTexture.colorSpace = THREE.SRGBColorSpace;
-startingFloorTexture.wrapS = THREE.RepeatWrapping; startingFloorTexture.wrapT = THREE.RepeatWrapping;
-startingFloorTexture.repeat.set(2, 33); 
+const startingFloorTextures = stagesInfo.map(stage => {
+    let name = stage.name.toLowerCase().replace(/ /g, '_');
+    let tex = textureLoader.load(`textures/${name}_floor.jpg`);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.wrapS = THREE.RepeatWrapping; 
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 33); 
+    return tex;
+});
 
 const materials = {
     stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.65, metalness: 0.2 }),
@@ -759,8 +830,8 @@ texObj.closeBtn.addEventListener('click', () => {
     giantBall.material.needsUpdate = true;
 });
 
-const groundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: floorTexture, roughness: 0.9, metalness: 0.05 });
-const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0x999999, map: startingFloorTexture, roughness: 0.9, metalness: 0.05 });
+const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: floorTextures[0], roughness: 0.9, metalness: 0.05 });
+const startingGroundMat = new THREE.MeshStandardMaterial({ color: 0xffffff, map: startingFloorTextures[0], roughness: 0.9, metalness: 0.05 });
 
 const puddleShape = new THREE.Shape();
 puddleShape.moveTo(0, 6.5);
@@ -771,18 +842,9 @@ puddleShape.bezierCurveTo(-2.5, 3.0, -3.0, 5.0, 0, 6.5);
 
 const puddleGeo = new THREE.ShapeGeometry(puddleShape, 32);
 
-const puddleSurfaceMat = new THREE.MeshStandardMaterial({ 
-    color: 0x1ca3ec, 
-    transparent: true, 
-    opacity: 0.8,    
-    roughness: 0.8,  
-    metalness: 0.05
-});
-
 // Splash Particle Setup
 const splashParticles = [];
 const splashGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-const splashMat = new THREE.MeshBasicMaterial({color: 0x88ccff, transparent: true, opacity: 0.8});
 
 const physicsMaterials = { ground: new CANNON.Material('ground'), ball: new CANNON.Material('ball'), obstacle: new CANNON.Material('obstacle') };
 world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, physicsMaterials.ball, { friction: 0.0, restitution: 0.0 }));
@@ -792,14 +854,18 @@ world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, phy
 // ==========================================
 const trackTiles = []; const obstacles = []; const puddles = []; const windmills = []; const debrisList = [];
 const gates = []; 
+const sceneryList = [];
 
 function spawnGate(zPos) {
+    let upcomingStageIdx = (trackStageIdx + 1) % stagesInfo.length;
+    const nextStg = stagesInfo[upcomingStageIdx];
+    
     const gateGroup = new THREE.Group();
     gateGroup.position.set(0, 0, zPos);
 
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x00ccff, roughness: 0.5 }); // Bright sky blue
-    const doorMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, roughness: 0.4 }); // Bright sunset orange
-    const handleMat = new THREE.MeshStandardMaterial({ color: 0xff00ff, metalness: 0.8, roughness: 0.2 }); // Neon pink
+    const frameMat = new THREE.MeshStandardMaterial({ color: nextStg.gateFrame, roughness: 0.5 }); 
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, map: createDoorTex(nextStg.emoji, nextStg.gateDoor) }); 
+    const handleMat = new THREE.MeshStandardMaterial({ color: nextStg.gateHandle, metalness: 0.8, roughness: 0.2 }); 
 
     const leftPillar = new THREE.Mesh(new THREE.BoxGeometry(2, 15, 2), frameMat);
     leftPillar.position.set(-7, 7.5, 0); leftPillar.castShadow = true; gateGroup.add(leftPillar);
@@ -856,6 +922,8 @@ function spawnGate(zPos) {
         leftPillarBody: leftPillarBody,
         rightPillarBody: rightPillarBody
     });
+    
+    trackStageIdx = upcomingStageIdx;
 }
 
 function spawnWindmill(zPos) {
@@ -885,6 +953,68 @@ function spawnStartingRunway() {
     world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
 }
 
+function spawnScenery(zPos, stageIdx) {
+    const sides = [-9, 9];
+    sides.forEach(xPos => {
+        if(Math.random() < 0.4) return;
+        let mesh;
+        if(stageIdx === 0) { // Sky
+            mesh = new THREE.Group();
+            const cloudMat = new THREE.MeshStandardMaterial({color: 0xffffff, flatShading: true});
+            const puffs = 3 + Math.floor(Math.random() * 3);
+            for(let j=0; j<puffs; j++) {
+                const p = new THREE.Mesh(new THREE.SphereGeometry(1.5, 8, 8), cloudMat);
+                p.position.set((Math.random()-0.5)*2, (Math.random()-0.5)*1+1, (Math.random()-0.5)*2);
+                p.scale.set(1+Math.random()*0.5, 0.8+Math.random()*0.5, 1+Math.random()*0.5);
+                mesh.add(p);
+            }
+            mesh.position.y = 1;
+        } else if(stageIdx === 1) { // Neon
+            let col = 0xff00ff; // pink
+            let randC = Math.random();
+            if(randC > 0.66) col = 0x00ffff; // cyan
+            else if(randC > 0.33) col = 0xffff00; // yellow
+            mesh = new THREE.Mesh(new THREE.BoxGeometry(2, Math.random()*8+4, 2), new THREE.MeshStandardMaterial({color: col, emissive: 0x111111}));
+            mesh.position.y = mesh.geometry.parameters.height / 2;
+        } else if(stageIdx === 2) { // Forest
+            mesh = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2), new THREE.MeshStandardMaterial({color: 0x8b4513}));
+            trunk.position.y = 1;
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(2, 4), new THREE.MeshStandardMaterial({color: 0x228b22}));
+            leaves.position.y = 4;
+            mesh.add(trunk, leaves);
+        } else if(stageIdx === 3) { // Snow
+            mesh = new THREE.Group();
+            const base = new THREE.Mesh(new THREE.SphereGeometry(1.5), new THREE.MeshStandardMaterial({color: 0xffffff}));
+            base.position.y = 1.5;
+            const top = new THREE.Mesh(new THREE.SphereGeometry(1), new THREE.MeshStandardMaterial({color: 0xffffff}));
+            top.position.y = 3.5;
+            mesh.add(base, top);
+        } else if(stageIdx === 4) { // Volcano
+            mesh = new THREE.Group();
+            const vMat = new THREE.MeshStandardMaterial({color: 0x333333, roughness: 0.9});
+            const base = new THREE.Mesh(new THREE.ConeGeometry(2.5, 4, 8), vMat);
+            base.position.y = 2;
+            const lava = new THREE.Mesh(new THREE.SphereGeometry(0.8, 8, 8), new THREE.MeshBasicMaterial({color: 0xff3300}));
+            lava.position.y = 3.5;
+            mesh.add(base, lava);
+        } else if(stageIdx === 5) { // Desert
+            mesh = new THREE.Group();
+            const main = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 4), new THREE.MeshStandardMaterial({color: 0x2e8b57}));
+            main.position.y = 2;
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 2), new THREE.MeshStandardMaterial({color: 0x2e8b57}));
+            arm.rotation.z = Math.PI/2;
+            arm.position.set(0.8, 2, 0);
+            mesh.add(main, arm);
+        }
+        if(mesh) {
+            mesh.position.set(xPos + (Math.random()-0.5)*3, 0, zPos + (Math.random()-0.5)*10);
+            scene.add(mesh);
+            sceneryList.push(mesh);
+        }
+    });
+}
+
 function spawnNextChunk() {
     const gapChance = Math.min(0.25, 0.15 + (distanceTraveled / 10000));
     
@@ -902,11 +1032,19 @@ function spawnNextChunk() {
     if (nextSpawnZ <= nextGateZ) {
         spawnGate(nextSpawnZ);
         nextGateZ -= 1000;
+        
+        spawnScenery(nextSpawnZ, trackStageIdx);
+        
         nextSpawnZ -= 30;
         return; 
     }
 
-    if (Math.abs(nextSpawnZ) % 300 === 0) { spawnWindmill(nextSpawnZ); nextSpawnZ -= 30; return; }
+    if (Math.abs(nextSpawnZ) % 300 === 0) { 
+        spawnWindmill(nextSpawnZ); 
+        spawnScenery(nextSpawnZ, trackStageIdx);
+        nextSpawnZ -= 30; 
+        return; 
+    }
 
     const rand = Math.random();
     
@@ -923,7 +1061,7 @@ function spawnNextChunk() {
     else if (rand < 0.45) { // Spawn pin
         const laneIndex = Math.floor(Math.random() * 3) - 1; 
         const xPos = laneIndex * 3;
-        const pinMesh = new THREE.Mesh(pinGeo, pinMat); pinMesh.position.set(xPos, 1, nextSpawnZ); pinMesh.castShadow = true; scene.add(pinMesh);
+        const pinMesh = new THREE.Mesh(pinGeo, stageMats[trackStageIdx].pin); pinMesh.position.set(xPos, 1, nextSpawnZ); pinMesh.castShadow = true; scene.add(pinMesh);
         
         // Changed Pin to KINEMATIC sensor to allow smooth pass-through while firing collisions
         const pinBody = new CANNON.Body({ type: CANNON.Body.KINEMATIC, material: physicsMaterials.obstacle });
@@ -932,7 +1070,7 @@ function spawnNextChunk() {
         const qY = new CANNON.Quaternion(); qY.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
         pinBody.addShape(pinShape, new CANNON.Vec3(0, 0, 0), qY);
         pinBody.position.set(xPos, 1.0, nextSpawnZ); pinBody.isPin = true; world.addBody(pinBody);
-        obstacles.push({ mesh: pinMesh, body: pinBody });
+        obstacles.push({ mesh: pinMesh, body: pinBody, stageIdx: trackStageIdx });
     } else { // Spawn Puddle
         const laneIndex = Math.floor(Math.random() * 3) - 1; 
         const xPos = laneIndex * 3;
@@ -943,20 +1081,23 @@ function spawnNextChunk() {
             clipBias: 0.003,
             textureWidth: 512, 
             textureHeight: 512,
-            color: 0x88bbff
+            color: stagesInfo[trackStageIdx].puddleCol
         });
         puddleMirror.rotation.x = -Math.PI / 2;
         puddleGroup.add(puddleMirror);
 
-        const puddleSurface = new THREE.Mesh(puddleGeo, puddleSurfaceMat);
+        const puddleSurface = new THREE.Mesh(puddleGeo, stageMats[trackStageIdx].puddle);
         puddleSurface.rotation.x = -Math.PI / 2;
         puddleSurface.position.y = 0.01; 
         puddleSurface.receiveShadow = true;
         puddleGroup.add(puddleSurface);
 
         scene.add(puddleGroup);
-        puddles.push({ group: puddleGroup, mirror: puddleMirror, x: xPos, z: nextSpawnZ });
+        puddles.push({ group: puddleGroup, mirror: puddleMirror, x: xPos, z: nextSpawnZ, stageIdx: trackStageIdx });
     }
+    
+    spawnScenery(nextSpawnZ, trackStageIdx);
+    
     nextSpawnZ -= 30;
 }
 
@@ -1243,7 +1384,7 @@ function triggerPlayAnimation() {
     }
     
     for(let i = 0; i < 20; i++) {
-        const pMesh = new THREE.Mesh(pinGeo, pinMat); 
+        const pMesh = new THREE.Mesh(pinGeo, stageMats[0].pin); 
         pMesh.castShadow = true; pMesh.receiveShadow = true; 
         scene.add(pMesh);
         
@@ -1358,8 +1499,30 @@ function resetGame() {
     splashParticles.forEach(sp => { scene.remove(sp.mesh); }); splashParticles.length = 0;
     windParticles.forEach(wp => { scene.remove(wp.mesh); }); windParticles.length = 0;
     powerups.forEach(pu => { scene.remove(pu.mesh); }); powerups.length = 0;
+    sceneryList.forEach(sc => scene.remove(sc)); sceneryList.length = 0;
     
     gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
+    
+    floorParticles.forEach(fp => scene.remove(fp.mesh)); floorParticles.length = 0;
+
+    currentStageIdx = 0;
+    trackStageIdx = 0;
+    transitionProgress = 1.0;
+    
+    dayColor.setHex(stagesInfo[0].bgDay);
+    nightColor.setHex(stagesInfo[0].bgNight);
+    
+    groundMat.map = floorTextures[0];
+    startingGroundMat.map = startingFloorTextures[0];
+    groundMat.needsUpdate = true;
+    startingGroundMat.needsUpdate = true;
+    
+    groundMat.color.setHex(stagesInfo[0].floorCol);
+    groundMat.roughness = stagesInfo[0].floorRough;
+    startingGroundMat.color.setHex(stagesInfo[0].floorCol);
+    startingGroundMat.roughness = stagesInfo[0].floorRough;
+    scene.fog.near = 100;
+    scene.fog.far = 500;
 
     spawnStartingRunway();
     currentLane = 0; nextSpawnZ = -165; nextGateZ = -1000;
@@ -1491,6 +1654,70 @@ function animate() {
         if (highScore.score > 0 && currentScore > highScore.score && !hasReachedNewHighScore) {
             hasReachedNewHighScore = true;
             showNewHighScoreText();
+        }
+
+        // Process Stage Transition Logic
+        if (transitionProgress < 1.0) {
+            transitionProgress += delta * 0.5; // 2 sec transition
+            if (transitionProgress >= 1.0) {
+                transitionProgress = 1.0;
+                scene.fog.near = 100;
+                scene.fog.far = 500;
+                
+                groundMat.map = floorTextures[currentStageIdx];
+                groundMat.needsUpdate = true;
+            } else {
+                const fogBump = Math.sin(transitionProgress * Math.PI);
+                // Adjust fog near/far to tightly mask horizon without hiding player floor
+                scene.fog.near = THREE.MathUtils.lerp(100, 20, fogBump);
+                scene.fog.far = THREE.MathUtils.lerp(500, 80, fogBump);
+                
+                // Swap the texture exactly halfway through the fade
+                if (transitionProgress > 0.5 && groundMat.map !== floorTextures[currentStageIdx]) {
+                    groundMat.map = floorTextures[currentStageIdx];
+                    groundMat.needsUpdate = true;
+                }
+            }
+            
+            const sOld = stagesInfo[oldStageIdx];
+            const sNew = stagesInfo[currentStageIdx];
+            
+            const cDay = new THREE.Color(sOld.bgDay).lerp(new THREE.Color(sNew.bgDay), transitionProgress);
+            dayColor.copy(cDay);
+            
+            const cNight = new THREE.Color(sOld.bgNight).lerp(new THREE.Color(sNew.bgNight), transitionProgress);
+            nightColor.copy(cNight);
+            
+            const cFloor = new THREE.Color(sOld.floorCol).lerp(new THREE.Color(sNew.floorCol), transitionProgress);
+            groundMat.color.copy(cFloor);
+            groundMat.roughness = THREE.MathUtils.lerp(sOld.floorRough, sNew.floorRough, transitionProgress);
+        }
+        
+        // Floor Particles Trailing Logic
+        const sCur = stagesInfo[currentStageIdx];
+        const isGrounded = playerBody.position.y > -0.5 && playerBody.position.y < 2 && Math.abs(playerBody.velocity.y) < 2;
+        
+        if (sCur.trail && isGrounded && !isSinking && activePowerUp !== 'flying') {
+            if (Math.random() < 0.4) {
+                const fpMat = new THREE.MeshBasicMaterial({ color: sCur.trailCol, transparent: true, opacity: 0.8 });
+                const fp = new THREE.Mesh(fpGeo, fpMat);
+                fp.position.set(playerBody.position.x + (Math.random()-0.5)*0.5, 0.2, playerBody.position.z + 1.0);
+                scene.add(fp);
+                floorParticles.push({ mesh: fp, age: 0 });
+            }
+        }
+        
+        // Update Floor Particles
+        for (let i = floorParticles.length - 1; i >= 0; i--) {
+            let fp = floorParticles[i];
+            fp.age += delta;
+            fp.mesh.position.y += 2 * delta;
+            let s = Math.max(0, 1.0 - (fp.age / 0.5));
+            fp.mesh.scale.set(s, s, s);
+            if (fp.age > 0.5) {
+                scene.remove(fp.mesh);
+                floorParticles.splice(i, 1);
+            }
         }
         
         // Update powerups logic
@@ -1679,7 +1906,7 @@ function animate() {
                     if (Math.random() < 0.6) {
                         playTone(400 + Math.random()*300, 'triangle', 0.1, 0.2);
                         for(let k=0; k<6; k++) {
-                           let sp = new THREE.Mesh(splashGeo, splashMat);
+                           let sp = new THREE.Mesh(splashGeo, stageMats[p.stageIdx].splash);
                            sp.position.set(playerBody.position.x + (Math.random()-0.5)*3, 0.2, playerBody.position.z + (Math.random()-0.5)*3);
                            scene.add(sp);
                            splashParticles.push({mesh: sp, vx: (Math.random()-0.5)*8, vy: 6 + Math.random()*6, vz: (Math.random()-0.5)*8 + playerBody.velocity.z, age: 0});
@@ -1746,7 +1973,9 @@ function animate() {
             splashParticles.forEach(sp => { scene.remove(sp.mesh); }); splashParticles.length = 0;
             windParticles.forEach(wp => { scene.remove(wp.mesh); }); windParticles.length = 0;
             powerups.forEach(pu => { scene.remove(pu.mesh); }); powerups.length = 0;
+            sceneryList.forEach(sc => { scene.remove(sc); }); sceneryList.length = 0;
             gates.forEach(g => { scene.remove(g.group); world.removeBody(g.leftPillarBody); world.removeBody(g.rightPillarBody); }); gates.length = 0;
+            floorParticles.forEach(fp => { scene.remove(fp.mesh); }); floorParticles.length = 0;
             
             spawnStartingRunway();
 
@@ -1795,6 +2024,14 @@ function animate() {
             }
         }
 
+        for (let i = sceneryList.length - 1; i >= 0; i--) {
+            let sc = sceneryList[i];
+            if (sc.position.z > playerMesh.position.z + 150) {
+                scene.remove(sc);
+                sceneryList.splice(i, 1);
+            }
+        }
+
         for (let i = gates.length - 1; i >= 0; i--) {
             let g = gates[i];
             let distToGate = playerBody.position.z - g.zPos; 
@@ -1803,14 +2040,17 @@ function animate() {
                 if (!g.soundPlayed) {
                     playTone(200, 'triangle', 0.5, 0.3); // Gate open rumble
                     g.soundPlayed = true;
+                    
+                    // Trigger fog transition early!
+                    startStageTransition();
                 }
                 g.opened = true;
             }
 
-            if (!g.passed && distToGate < 0 && gameState !== 'GAMEOVER') { 
+            if (!g.passed && distToGate < 0 && gameState === 'PLAYING') { 
                 g.passed = true;
                 gatesPassed++;
-                showStageText(gatesPassed);
+                showStageText(gatesPassed + 1, stagesInfo[currentStageIdx].name);
                 playTone(440, 'square', 0.1, 0.2);
                 setTimeout(() => playTone(554, 'square', 0.1, 0.2), 100);
                 setTimeout(() => playTone(659, 'square', 0.2, 0.3), 200);
@@ -1836,7 +2076,7 @@ function animate() {
             } else if (obs.body.needsShatter) {
                 scene.remove(obs.mesh); world.removeBody(obs.body); obstacles.splice(i, 1); pinsSmashed++;
                 for(let j=0; j<5; j++) {
-                    const dMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), pinMat); dMesh.castShadow = true; dMesh.receiveShadow = true; scene.add(dMesh);
+                    const dMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), stageMats[obs.stageIdx].pin); dMesh.castShadow = true; dMesh.receiveShadow = true; scene.add(dMesh);
                     
                     // Shattered debris set to physics group 8, mask 1 (only collides with ground) to prevent it from bumping the player
                     const dBody = new CANNON.Body({ mass: 0.5, shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25)) });
