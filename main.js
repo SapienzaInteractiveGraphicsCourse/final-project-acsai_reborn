@@ -346,7 +346,7 @@ abandonBtn.addEventListener('click', () => {
 
 function updatePauseStats() {
     const pStats = document.getElementById('pause-stats');
-    pStats.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}</span><br>` + scoreHud.innerHTML;
+    pStats.innerHTML = scoreHud.innerHTML;
 }
 
 function togglePause() {
@@ -738,7 +738,7 @@ startingFloorTexture.repeat.set(2, 33);
 
 const materials = {
     stone: new THREE.MeshStandardMaterial({ color: 0xaaaaaa, map: stoneTexture, roughness: 0.65, metalness: 0.2 }),
-    beachBall: new THREE.MeshStandardMaterial({ color: 0xaa0000, roughness: 0.1 })
+    beachBall: new THREE.MeshPhysicalMaterial({ color: 0xaa0000, roughness: 0.3, metalness: 0.1, clearcoat: 1.0, clearcoatRoughness: 0.1 })
 };
 
 // Texture Save Logic
@@ -785,7 +785,7 @@ const splashGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
 const splashMat = new THREE.MeshBasicMaterial({color: 0x88ccff, transparent: true, opacity: 0.8});
 
 const physicsMaterials = { ground: new CANNON.Material('ground'), ball: new CANNON.Material('ball'), obstacle: new CANNON.Material('obstacle') };
-world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, physicsMaterials.ball, { friction: 0.0, restitution: 0.2 }));
+world.addContactMaterial(new CANNON.ContactMaterial(physicsMaterials.ground, physicsMaterials.ball, { friction: 0.0, restitution: 0.0 }));
 
 // ==========================================
 // 6. PROCEDURAL CHUNKS, GAPS & GATES
@@ -881,7 +881,7 @@ function spawnWindmill(zPos) {
 function spawnStartingRunway() {
     const tMesh = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 200), startingGroundMat);
     tMesh.position.set(0, -1, -50); tMesh.receiveShadow = true; scene.add(tMesh);
-    const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 100)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, -50) });
+    const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 100.1)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, -50) });
     world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
 }
 
@@ -896,7 +896,7 @@ function spawnNextChunk() {
 
     const tMesh = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 30), groundMat);
     tMesh.position.set(0, -1, nextSpawnZ); tMesh.receiveShadow = true; scene.add(tMesh);
-    const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, nextSpawnZ) });
+    const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15.1)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, nextSpawnZ) });
     world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
 
     if (nextSpawnZ <= nextGateZ) {
@@ -924,7 +924,11 @@ function spawnNextChunk() {
         const laneIndex = Math.floor(Math.random() * 3) - 1; 
         const xPos = laneIndex * 3;
         const pinMesh = new THREE.Mesh(pinGeo, pinMat); pinMesh.position.set(xPos, 1, nextSpawnZ); pinMesh.castShadow = true; scene.add(pinMesh);
-        const pinBody = new CANNON.Body({ mass: 2, material: physicsMaterials.obstacle });
+        
+        // Changed Pin to KINEMATIC sensor to allow smooth pass-through while firing collisions
+        const pinBody = new CANNON.Body({ type: CANNON.Body.KINEMATIC, material: physicsMaterials.obstacle });
+        pinBody.collisionResponse = false; 
+        
         const qY = new CANNON.Quaternion(); qY.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
         pinBody.addShape(pinShape, new CANNON.Vec3(0, 0, 0), qY);
         pinBody.position.set(xPos, 1.0, nextSpawnZ); pinBody.isPin = true; world.addBody(pinBody);
@@ -1157,6 +1161,8 @@ scene.add(playerMesh);
 
 const playerBody = new CANNON.Body({ mass: 25, shape: new CANNON.Sphere(playerRadius), position: new CANNON.Vec3(0, 5, 0), material: physicsMaterials.ball });
 playerBody.linearDamping = 0; playerBody.angularDamping = 0; 
+playerBody.collisionFilterGroup = 4; // Restricting player collision
+playerBody.collisionFilterMask = 1;  // Only collide with the Ground & Pins
 world.addBody(playerBody);
 
 playerBody.addEventListener('collide', (e) => {
@@ -1165,26 +1171,6 @@ playerBody.addEventListener('collide', (e) => {
         if (currentForm === 'stone' || activePowerUp === 'invincible' || activePowerUp === 'flying') {
             e.body.needsShatter = true;
             
-            e.body.collisionResponse = false;
-
-            e.body.collisionFilterGroup = 0;
-            e.body.collisionFilterMask = 0;
-            if (activePowerUp) {
-                e.body.collisionResponse = false;
-
-                if (currentForm === 'beachBall') {
-                    playerBody.mass = 20;
-                    playerBody.updateMassProperties();
-                    playerBody.material.restitution = 0;
-
-                    // Completely cancel the collision impulse
-                    playerBody.velocity.y = 0;
-                    playerBody.angularVelocity.set(0, 0, 0);
-
-                    // Push slightly forward so the ball keeps smashing through
-                    playerBody.position.z -= 0.05;
-                }
-            }
             playTone(250 + Math.random()*50, 'triangle', 0.15, 0.4); 
             setTimeout(() => playTone(150 + Math.random()*50, 'square', 0.15, 0.2), 30);
         } else {
@@ -1230,7 +1216,7 @@ function activatePowerUp(type) {
             if (!hasFloor) {
                 const tMesh = new THREE.Mesh(new THREE.BoxGeometry(12, 2, 30), groundMat);
                 tMesh.position.set(0, -1, checkZ); tMesh.receiveShadow = true; scene.add(tMesh);
-                const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, checkZ) });
+                const tBody = new CANNON.Body({ type: CANNON.Body.STATIC, shape: new CANNON.Box(new CANNON.Vec3(6, 1, 15.1)), material: physicsMaterials.ground, position: new CANNON.Vec3(0, -1, checkZ) });
                 world.addBody(tBody); trackTiles.push({ mesh: tMesh, body: tBody });
             }
             checkZ -= 30;
@@ -1262,6 +1248,9 @@ function triggerPlayAnimation() {
         scene.add(pMesh);
         
         const pBody = new CANNON.Body({ mass: 1, material: physicsMaterials.obstacle });
+        pBody.collisionFilterGroup = 8; // Debris specific physics group
+        pBody.collisionFilterMask = 1;  // Only collides with the floor
+        
         const qY = new CANNON.Quaternion(); 
         qY.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
         pBody.addShape(pinShape, new CANNON.Vec3(0, 0, 0), qY);
@@ -1387,8 +1376,8 @@ function resetGame() {
     playerBody.mass = 1.5; playerBody.updateMassProperties(); 
     
     playerBody.type = CANNON.Body.DYNAMIC;
-    playerBody.collisionFilterGroup = 1;
-    playerBody.collisionFilterMask = -1;
+    playerBody.collisionFilterGroup = 4;
+    playerBody.collisionFilterMask = 1;
     playerBody.position.set(0, 5, 0); playerBody.velocity.set(0,0,0); playerBody.angularVelocity.set(0,0,0);
     
     isPaused = false;
@@ -1435,7 +1424,7 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'a' || e.key === 'ArrowLeft') currentLane--;
     if (e.key === 'd' || e.key === 'ArrowRight') currentLane++;
     
-    const isGrounded = playerBody.position.y > -0.5 && playerBody.position.y < 2 && Math.abs(playerBody.velocity.y) < 1;
+    const isGrounded = playerBody.position.y > -0.5 && playerBody.position.y < 2 && Math.abs(playerBody.velocity.y) < 2;
     if ((e.key === 'w' || e.key === ' ' || e.key === 'ArrowUp') && isGrounded && !isSinking && activePowerUp !== 'flying') {
         if (currentForm === 'stone') playerBody.velocity.y = 10;    
         if (currentForm === 'beachBall') playerBody.velocity.y = 25; 
@@ -1447,6 +1436,10 @@ window.addEventListener('keydown', (e) => {
             playerMesh.material = materials.beachBall; 
             playerBody.mass = 1.5; 
             playerBody.updateMassProperties(); 
+            if (isGrounded) {
+                playerBody.position.y = 1.0;
+                playerBody.velocity.y = 0;
+            }
             baseSpeed = -35; 
             UI_Status.innerText = "Current Form: Beach Ball (Floaty)"; 
             UI_Status.style.color = "#33ccff"; 
@@ -1456,6 +1449,10 @@ window.addEventListener('keydown', (e) => {
             playerMesh.material = materials.stone; 
             playerBody.mass = 25; 
             playerBody.updateMassProperties(); 
+            if (isGrounded) {
+                playerBody.position.y = 1.0;
+                playerBody.velocity.y = 0;
+            }
             baseSpeed = -22; 
             UI_Status.innerText = "Current Form: Stone (Heavy)"; 
             UI_Status.style.color = "#aaaaaa"; 
@@ -1579,7 +1576,7 @@ function animate() {
         }
         
         let speedText = speedMultiplier > 1.1 ? `<br><span style="color:#808080">x${speedMultiplier.toFixed(1)} SPEED!</span>` : "";
-        scoreHud.innerHTML = `Player: <span style="color:#ffeb3b">${playerName}</span><br>Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
+        scoreHud.innerHTML = `High Score: <span style="color:#00ccff">${Math.floor(highScore.score)}</span><br>Player: <span style="color:#ffeb3b">${playerName}</span><br>Score: <span style="color:#00ccff">${Math.floor(currentScore)}</span><br>Time: <span style="color:#00e676">${survivalTime.toFixed(1)}s</span><br>Dist: <span style="color:#00e676">${distanceTraveled}m</span><br>Pins: <span style="color:#ffcc00">${pinsSmashed}</span>${speedText}`;
     }
 
     // ------------------------------------------
@@ -1840,7 +1837,12 @@ function animate() {
                 scene.remove(obs.mesh); world.removeBody(obs.body); obstacles.splice(i, 1); pinsSmashed++;
                 for(let j=0; j<5; j++) {
                     const dMesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), pinMat); dMesh.castShadow = true; dMesh.receiveShadow = true; scene.add(dMesh);
+                    
+                    // Shattered debris set to physics group 8, mask 1 (only collides with ground) to prevent it from bumping the player
                     const dBody = new CANNON.Body({ mass: 0.5, shape: new CANNON.Box(new CANNON.Vec3(0.25, 0.25, 0.25)) });
+                    dBody.collisionFilterGroup = 8;
+                    dBody.collisionFilterMask = 1;
+                    
                     dBody.position.copy(obs.body.position); dBody.position.x += (Math.random() - 0.5) * 0.5; dBody.position.y += Math.random();
                     dBody.velocity.set((Math.random() - 0.5) * 20, Math.random() * 15 + 5, playerBody.velocity.z + (Math.random() - 0.5) * 15);
                     world.addBody(dBody); debrisList.push({ mesh: dMesh, body: dBody, spawnTime: gameElapsedTime });
