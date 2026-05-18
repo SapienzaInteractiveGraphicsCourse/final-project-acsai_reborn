@@ -547,7 +547,7 @@ const rulesObj = createModal('rules-modal', 'HOW TO PLAY', `
         <b>[2]:</b> Swap Stone (Heavy) & Beach Ball (Floaty)<br><br>
         <b>[9] or [Mouse Click]:</b> Pause / Resume Game<br><br>
         <em>You can smash pins with the Stone ball! The Beach ball is floaty on water and jumps high!</em><br><br>
-        <b>Power-ups (Stage 1+):</b><br>
+        <b>Power-ups (Stage 2+):</b><br>
         🟢 <b>Green (💪):</b> Invincibility (Crush anything, don't sink!)<br>
         🟣 <b>Purple (🪽):</b> Flying (Soar above all obstacles!)<br><br>
         <b> The objective is to survive for the longest amount of time possible and hit as many pins as you can!</b>
@@ -1118,7 +1118,7 @@ function spawnNextChunk() {
 
     const rand = Math.random();
     
-    if (gatesPassed >= 1 && rand < 0.2) {
+    if (gatesPassed >= 1 && rand < 0.1) {
         const isFlying = Math.random() < 0.5;
         const puMesh = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 16), isFlying ? purplePuMat : greenPuMat);
         const puLane = Math.floor(Math.random() * 3) - 1; 
