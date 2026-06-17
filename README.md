@@ -7,7 +7,7 @@ Play the project online:
 
 **Repository:** `final-project-acsai_reborn`
 
-**Authors:** Francesca Cinelli, Abduazizkhon Shomansurov
+**Authors:** Francesca Cinelli (2046606), Abduazizkhon Shomansurov (2052124)
 
 **Course:** Interactive Graphics 
 
